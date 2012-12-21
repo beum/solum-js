@@ -627,40 +627,26 @@ module.exports = (function () {
      * them against the constraints
      */
     self.isEntityValid = function (entity) {
-      var isValid, i, stdProps, skip, j, errors;
+      var isValid, i, j, errors;
       isValid = true;
 
       // Loop through all of the properties and validate
-      for (i in entity) {
-        if (entity.hasOwnProperty(i)) {
-          // This check for entity standard properties is purely for IE8 support
-          stdProps = ['errors', 'constraints', 'hasError'];
-          skip = false;
-          for (j in stdProps) {
-            if (stdProps.hasOwnProperty(j) && i === stdProps[j]) {
-              skip = true;
-            }
+      for (i in entity.properties) {
+        // Validate the KO observable property
+        errors = self.isValid(entity.properties[i](), entity.constraints[i]);
+
+        // Clear existing errors
+        entity.errors[i].removeAll();
+
+        // Add new errors to the error object
+        for (j in errors) {
+          if (errors.hasOwnProperty(j)) {
+            entity.errors[i].push(errors[j]);
           }
+        }
 
-          // Skip standard properties
-          if (!skip) {
-            // Validate the KO observable property
-            errors = self.isValid(entity[i](), entity.constraints[i]);
-
-            // Clear existing errors
-            entity.errors[i].removeAll();
-
-            // Add new errors to the error object
-            for (j in errors) {
-              if (errors.hasOwnProperty(j)) {
-                entity.errors[i].push(errors[j]);
-              }
-            }
-
-            if (errors.length > 0) {
-              isValid = false;
-            }
-          }
+        if (errors.length > 0) {
+          isValid = false;
         }
       }
       return isValid;
@@ -1743,7 +1729,7 @@ module.exports = (function () {
    * Represents a combination of a smart date menu and range input to have back
    * and forth communication between the smart date menu and range input.
    */
-  api.dateRangeModel = function () {
+  api.DateRange = function (root) {
     var self, ignoreDateSubscription;
 
     self = this;
@@ -1755,7 +1741,7 @@ module.exports = (function () {
     // TODO: Figure out why we need this
     self.hasChanged            = false;
 
-    self.dates = new root.constructEntity('dateRange'); // Instantiate a new date entity
+    self.dates = new root.constructEntity('DateRange'); // Instantiate a new date entity
 
     // Smart date options
     self.smartDates = ko.observableArray([]);
@@ -1817,7 +1803,6 @@ module.exports = (function () {
       // Helps the page object determine whether or not to change the page back
       // to 1
       self.hasChanged = true;
-
       self.validator.isEntityValid(self.dates);
 
       if (self.selectedSmartDateSlug() !== 'custom' && !ignoreDateSubscription) {
@@ -1857,8 +1842,9 @@ require.define("/solum/entities/DateRange.js",function(require,module,exports,__
 module.exports = function (solum) {
   var self, today, threeYearsAgo, localization, checkFormat, startConstraints;
   // Properties
-  this.start = ko.observable('');
-  this.end   = ko.observable('');
+  this.properties = {};
+  this.properties.start = ko.observable('');
+  this.properties.end   = ko.observable('');
 
   // Constraints
   this.constraints = {
@@ -1972,7 +1958,7 @@ solum = (function () {
       throw "The requested component does not exist.";
     }
 
-    return new api.components[group][component]();
+    return new api.components[group][component](api);
   };
 
   /**
@@ -1987,11 +1973,14 @@ solum = (function () {
    */
   decorateEntity = function (entity) {
     var i;
+    
+    // Setup error properties mirroring the actual properties
     entity.errors = {};
-    for (i in entity) {
-      if (entity.hasOwnProperty(i)) {
-        entity.errors[i] = ko.observableArray([]);
-      }
+    for (i in entity.properties) {
+      entity.errors[i] = ko.observableArray([]);
+      
+      // Provide top-level access to obsevable properties
+      entity[i] = entity.properties[i];
     }
 
     // Add a convenience method for checking if there are errors
@@ -2008,30 +1997,21 @@ solum = (function () {
       return hasError;
     }, entity);
 
-    // Make the standard properties non-enumerable -- Does not work in IE8 grrr...
-    if (typeof Object.defineProperty === 'function') {
-      Object.defineProperty(entity, 'constraints', {enumerable: false});
-      Object.defineProperty(entity, 'errors',      {enumerable: false});
-      Object.defineProperty(entity, 'hasError',    {enumerable: false});
-    }
     
     var standardProperties = ['constraints', 'errors', 'hasError'];
     
     // Add a mapper function
     entity.toObject = function () {
       var i, obj = {};
-      for (i in this) {
-        // This is a standard property that should be ignored
-        if (!this.hasOwnProperty(i) || $.inArray(i, standardProperties) !== -1) {
-          continue;
-          
-        // recursively execute on embedded entities
-        } else if (typeof this[i] === 'object') {
-          obj[i] = this.toObject();
+      var self = this;
+      for (i in self.properties) {
+        // Call the toObject method on the nested entity
+        if (typeof self.properties[i] === 'object') {
+          obj[i] = self.properties[i].toObject();
         
         // KO observable property - evaluate and set that property in return obj
         } else {
-         obj[i] = this[i]();
+         obj[i] = self.properties[i]();
         }
       };
 
@@ -2039,27 +2019,17 @@ solum = (function () {
     };
 
     // Take a plain javascript object and convert to an entity
-    entity.fromObject = function (obj, ent) {
-      var i;
+    entity.fromObject = function (obj) {
+      var i, self = this;
       
-      // To allow for recursion on nested entities, force function to accept an
-      // entity.  The default though, is that it is operating on this.
-      if (!ent) {
-        ent = this;
-      }
-      
-      for (i in ent) {
-        // This is a standard property that should be ignored
-        if (!ent.hasOwnProperty(i) || $.inArray(i, standardProperties) !== -1) {
-          continue;  
-          
-        // recursively execute on embedded entities
-        } else if (typeof ent[i] === 'object') {
-          obj[i] = this.fromObject(obj[i], ent[i]);
+      for (i in self.properties) {
+        // Call fromObject on the embedded entity
+        if (typeof self.properties[i] === 'object') {
+          obj[i] = self.properties[i].fromObject(obj[i]);
         
         // KO observable property - set the value from the raw JS obj
         } else {
-         ent[i](obj[i]);
+         self.properties[i](obj[i]);
         }
       };
 
