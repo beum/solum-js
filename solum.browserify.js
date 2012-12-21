@@ -448,14 +448,14 @@ module.exports = (function () {
    * attempted.
    */
   ajax.manager = function (config) {
-    var self, prefix, ajax, badRequestHandler, errorHandler;
+    var self, prefix, ajaxMethod, badRequestHandler, errorHandler;
     self = this;
 
     // Merge the new config with the default configurations
     config = $.extend({}, ajax.defaultConfig, config);
 
     prefix            = config.prefix;
-    ajax              = config.ajax;
+    ajaxMethod        = config.ajax;
     badRequestHandler = config.badRequestHandler;
     errorHandler      = config.errorHandler;
 
@@ -537,7 +537,7 @@ module.exports = (function () {
       // Return the ajax object (if using jquery)
       // Assume makeAjaxRequest takes jquery-like parameters, otherwise expect
       // caller to implement an adapter to make it work
-      self.pendingRequests[cnt] = ajax({
+      self.pendingRequests[cnt] = ajaxMethod({
         url: url,
         type: route.method,
         data: params.data,
@@ -953,9 +953,9 @@ module.exports = (function (root) {
    */
   translation.defaultConfig = {
     // Use the global locale
-    locale: root.config.locale,
+    //locale: root.config.locale,
     // Use the global date/number format localization
-    dateNumberLocalization: root.config.dateAndNumberFormatLocalization
+    //dateNumberLocalization: root.config.dateAndNumberFormatLocalization
   };
 
   /**
@@ -969,10 +969,10 @@ module.exports = (function (root) {
     config = $.extend({}, config, translation.defaultConfig);
 
     self             = this;
-    locale           = config.locale;
+    locale           = 'en';//config.locale;
     dictionary       = translation.dictionary;
     translations     = dictionary[locale];
-    localized_format = config.dateNumberLocalization[locale];
+    //localized_format = config.dateNumberLocalization[locale];
 
     /**
      * Mimics the symfony translator, which will look in the specified dictionary,

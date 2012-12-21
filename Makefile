@@ -5,3 +5,6 @@ solum.min.js: solum.browserify.js
 
 solum.browserify.js:
 	./node_modules/browserify/bin/cmd.js lib/solum.js -o solum.browserify.js
+
+clean:
+	rm solum.min.js solum.browserify.js
