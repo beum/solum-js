@@ -405,12 +405,19 @@ require.define("/solum/services/ajax.js",function(require,module,exports,__dirna
  *  - Assumes solum.js
  */
 
+// Access services library (if needed) through root variable - easier to rename refactor later
 module.exports = (function () {
+  "use strict";
+  var routes;
+
   /**
    * Ajax namespace for all of the ajax-related services and functions
    */
   var ajax = {};
 
+  /**
+   * Example route object for reference
+   */
   ajax.routes = {
     exampleRoute: {
       name: 'exampleRoute',
@@ -441,14 +448,14 @@ module.exports = (function () {
    * attempted.
    */
   ajax.manager = function (config) {
-    var self, $ajax, prefix, badRequestHandler, errorHandler;
+    var self, prefix, ajax, badRequestHandler, errorHandler;
     self = this;
 
     // Merge the new config with the default configurations
     config = $.extend({}, ajax.defaultConfig, config);
 
     prefix            = config.prefix;
-    $ajax             = config.ajax;
+    ajax              = config.ajax;
     badRequestHandler = config.badRequestHandler;
     errorHandler      = config.errorHandler;
 
@@ -530,11 +537,10 @@ module.exports = (function () {
       // Return the ajax object (if using jquery)
       // Assume makeAjaxRequest takes jquery-like parameters, otherwise expect
       // caller to implement an adapter to make it work
-      self.pendingRequests[cnt] = $ajax({
+      self.pendingRequests[cnt] = ajax({
         url: url,
         type: route.method,
-        contentType: "application/json",
-        data: JSON.stringify(params.data),
+        data: params.data,
 
         // Set the timeout to 5 minutes - Should this be longer?
         timeout: 600000,
@@ -565,12 +571,16 @@ module.exports = (function () {
     };
   }; // END AJAXMANAGER
 
+  // Convenience methods for adding additional routes vs just replacing the route
+  // object
+  routes = ajax.routes;
   ajax.addAjaxRoutes = function (newRoutes) {
-    $.extend(ajax.routes, newRoutes);
+    $.extend(routes, newRoutes);
   };
-
+  
   return ajax;
 }());
+
 });
 
 require.define("/solum/services/validation.js",function(require,module,exports,__dirname,__filename,process,global){/*global solum:true, $:true, ko:true, module:true */
@@ -586,8 +596,6 @@ require.define("/solum/services/validation.js",function(require,module,exports,_
  *  - Assumes knockout.js
  *  - Assumes solum.js
  */
-
-// Access services library (if needed) through root variable - easier to rename refactor later
 module.exports = (function () {
   "use strict";
 
@@ -655,7 +663,6 @@ module.exports = (function () {
           }
         }
       }
-
       return isValid;
     };
 
@@ -684,44 +691,57 @@ module.exports = (function () {
     };
   };// END VALIDATOR
 
+  /**
+   * Namespace for constraints for validation
+   */
   validation.constraints = {};
-  validation.constraints.general = require('./constraints/general_constraints');
-  validation.constraints.date    = require('./constraints/date_constraints');
-  validation.constraints.string  = require('./constraints/string_constraints');
-
+  
   /**
    * Construct a constraint with the right parameters and translated message
    */
-  validation.constructConstraint = function (group, name, params, msg) {
+  validation.constraints.constructConstraint = function (group, name, params, msg) {
     var constraints = validation.constraints;
     if (!constraints[group] || !constraints[group][name]) {
-      throw "ConstructConstraint: Constraint not found: " + group + ":" + name;
+      throw "ConstructConstraint: Constraint not found.";
     }
-    var constraint = validation.constraints[group][name];
-    return new constraint(params, msg);
+
+    return new validation.constraints[group][name](params, msg);
   };
 
+  // Constraint Template - An example of what a constraint should look like
+  validation.constraints.abstractConstraint = function (params, msg) {
+    this.msg            = msg;
+    this.params         = params;
+    this.continueOnFail = false;
+    this.test           = function (subject) {
+      throw {error: self.msg};
+    };
+  };
+  
+  validation.constraints.general = require('./constraints/general');
+  validation.constraints.date    = require('./constraints/date');
+  validation.constraints.string  = require('./constraints/string');
+  
   return validation;
 }());
+
 });
 
-require.define("/solum/services/constraints/general_constraints.js",function(require,module,exports,__dirname,__filename,process,global){/**
+require.define("/solum/services/constraints/general.js",function(require,module,exports,__dirname,__filename,process,global){/**
  * Constraints for any type of subject
  */
 
-
+// Access services library (if needed) through root variable - easier to rename refactor later
 module.exports = (function () {
   "use strict";
 
-  var abstractConstraint = require('./abstract_constraint');
   var general = {};
 
   general.notNull = function (params, msg) {
-    var self = this;
+    var self        = this;
     self.defaultMsg = 'errors.form.general.not_null';
-
-    msg = (msg) ? msg : self.defaultMsg;
-    abstractConstraint.call(self, params, msg);
+    self.msg        = (msg) ? msg : self.defaultMsg;
+    self.params     = params;
 
     self.test = function (subject) {
       if (subject === '' || subject === null || subject === undefined) {
@@ -732,11 +752,11 @@ module.exports = (function () {
   };
 
   general.type = function (params, msg) {
-    var self = this;
+    var self        = this;
     self.defaultMsg = 'errors.form.general.type';
-
-    msg = (msg) ? msg : self.defaultMsg;
-    abstractConstraint.call(self, params, msg);
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
 
     self.test = function (subject) {
       if ((self.params.type === "null" && subject !== null) || typeof subject !== self.params.type) {
@@ -748,24 +768,30 @@ module.exports = (function () {
 
   return general;
 }());
+
 });
 
-require.define("/solum/services/constraints/abstract_constraint.js",function(require,module,exports,__dirname,__filename,process,global){module.exports = function (params, msg) {
-  this.msg = msg;
-  this.test;
-  this.params = params;
-  this.continueOnFail = false;
-};
-});
-
-require.define("/solum/services/constraints/date_constraints.js",function(require,module,exports,__dirname,__filename,process,global){/**
+require.define("/solum/services/constraints/date.js",function(require,module,exports,__dirname,__filename,process,global){/**
  * Date related constraints
  */
-
 module.exports = (function () {
   "use strict";
-  var abstractConstraint = require('./abstract_constraint');
   var date = {};
+  
+  date.min = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.min';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      if (true) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
 
   /*
   var self, dateNumberFormat;
@@ -826,25 +852,24 @@ module.exports = (function () {
     return true;
   };/**/
 
-   return date;
+  return date;
 }());
+
 });
 
-require.define("/solum/services/constraints/string_constraints.js",function(require,module,exports,__dirname,__filename,process,global){/**
+require.define("/solum/services/constraints/string.js",function(require,module,exports,__dirname,__filename,process,global){/**
  * All constraints related to strings
  */
 module.exports = (function () {
   "use strict";
 
-  var abstractConstraint = require('./abstract_constraint');
   var string = {};
 
   string.minLength = function (params, msg) {
-    var self = this;
+    var self        = this;
     self.defaultMsg = 'errors.form.string.min_length';
-
-    msg = (msg) ? msg : self.defaultMsg;
-    abstractConstraint.call(self, params, msg);
+    self.msg        = (msg) ? msg : self.defaultMsg;
+    self.params     = params;
 
     self.test = function (subject) {
       if (subject.length < self.params.min) {
@@ -855,11 +880,10 @@ module.exports = (function () {
   };
 
   string.maxLength = function (params, msg) {
-    var self = this;
+    var self        = this;
     self.defaultMsg = 'errors.form.string.max_length';
-
-    msg = (msg) ? msg : self.defaultMsg;
-    abstractConstraint.call(self, params, msg);
+    self.msg        = (msg) ? msg : self.defaultMsg;
+    self.params     = params;
 
     this.test = function (subject) {
       if (subject.length > self.params.max) {
@@ -870,11 +894,10 @@ module.exports = (function () {
   };
 
   string.match = function (params, msg) {
-    var self = this;
+    var self        = this;
     self.defaultMsg = 'errors.form.string.match';
-
-    msg = (msg) ? msg : self.defaultMsg;
-    abstractConstraint.call(self, params, msg);
+    self.msg        = (msg) ? msg : self.defaultMsg;
+    self.params     = params;
 
     this.test = function (subject) {
       if (subject.match(self.params.regex)) {
@@ -883,9 +906,10 @@ module.exports = (function () {
       return true;
     };
   };
-
+  
   return string;
 }());
+
 });
 
 require.define("/solum/services/translation.js",function(require,module,exports,__dirname,__filename,process,global){/*global solum:true, $:true, ko:true, module:true */
@@ -902,7 +926,10 @@ require.define("/solum/services/translation.js",function(require,module,exports,
  *  - Assumes solum.js
  */
 
-module.exports = (function () {
+/**
+ *
+ */
+module.exports = (function (root) {
   "use strict";
 
   /**
@@ -926,9 +953,9 @@ module.exports = (function () {
    */
   translation.defaultConfig = {
     // Use the global locale
-    locale: "en",
+    locale: root.config.locale,
     // Use the global date/number format localization
-    dateNumberLocalization: {}
+    dateNumberLocalization: root.config.dateAndNumberFormatLocalization
   };
 
   /**
@@ -1017,6 +1044,7 @@ module.exports = (function () {
 
   return translation;
 }());
+
 });
 
 require.define("/solum/services/storage.js",function(require,module,exports,__dirname,__filename,process,global){/*global solum:true, $:true, ko:true, module:true, localStorage:true, sessionStorage:true */
@@ -1208,6 +1236,10 @@ require.define("/solum/components/tables.js",function(require,module,exports,__d
  *  - Assumes knockout.js
  *  - Assumes solum.js
  */
+
+
+// The tables object is a module which abstracts the solum keyword
+// Access services library (if needed) through root variable - easier to rename refactor later
 module.exports = (function () {
   "use strict";
 
@@ -1224,25 +1256,31 @@ module.exports = (function () {
       return new api.paginatedTable();
     }
 
-    var self = this;
+    var self, tableApi;
+
+    self = this;
+
+    // Private variable to store all of the public methods, enumerated at the
+    // bottom in the API section
+    tableApi = {};
 
     // A public array of reports (has to be public for knockoutjs to manipulate)
-    self.list = ko.observableArray([]);
+    tableApi.list = ko.observableArray([]);
 
     // Set the page object, for information and for ajax requests, use the sister object directly
-    self.page = new api.page();
+    tableApi.page = new api.page();
 
     // Knockout render functions
-    self.view              = {};
-    self.view.afterRender  = function () {};
-    self.view.afterAdd     = function () {};
-    self.view.beforeRemove = function () {};
+    tableApi.view              = {};
+    tableApi.view.afterRender  = function () {};
+    tableApi.view.afterAdd     = function () {};
+    tableApi.view.beforeRemove = function () {};
 
-    self.addItem  = function (item) {
+    tableApi.addItem  = function (item) {
       self.list.push(item);
     };
 
-    self.addItems = function (items) {
+    tableApi.addItems = function (items) {
       var i;
       if (typeof items !== "object" || items === null) {
         throw "Add items helper requires an array. Received: " + typeof items;
@@ -1258,7 +1296,7 @@ module.exports = (function () {
     };
 
     // Remove method based on the key/value pair
-    self.removeItems = function (key, value) {
+    tableApi.removeItems = function (key, value) {
       var list, temp, i;
       list = self.list();
       temp = [];
@@ -1275,20 +1313,33 @@ module.exports = (function () {
 
     // Helper to clear items.  This is different than removing because no ajax method
     // is called before clearing
-    self.empty = function () {
+    tableApi.empty = function () {
       self.list.splice(0, self.list().length);
     };
 
     // Reload function to empty then load list - Convenience function
-    self.reload = function (items) {
+    tableApi.reload = function (items) {
       self.empty();
       self.addItems(items);
     };
+
+    /* PUBLIC tableApi - PUBLIC PROPERTIES AND METHODS HERE */
+    // Properties
+    this.list          = tableApi.list;
+    this.view          = tableApi.view;
+    this.page          = tableApi.page;
+
+    // Methods
+    this.addItem       = tableApi.addItem;
+    this.addItems      = tableApi.addItems;
+
+    this.removeItems    = tableApi.removeItems;
+    this.empty         = tableApi.empty;
+    this.reload        = tableApi.reload;
   }; // END Paginated Table
 
   api.groupedList = function () {
-    var self = this
-      , empty;
+    var self, groupedListApi, empty;
 
     // Prevent people from accidentally setting global variables by not using
     // the new keyword
@@ -1296,17 +1347,23 @@ module.exports = (function () {
       return new api.groupedList();
     }
 
-    self.groupedList = ko.observableArray([]);
-    self.table       = new api.paginatedTable();
+    self = this;
 
-    self.view              = {};
-    self.view.afterRender  = function () {};
-    self.view.afterAdd     = function () {};
-    self.view.beforeRemove = function () {};
+    // Private variable to store all of the public methods, enumerated at the
+    // bottom in the API section
+    groupedListApi = {};
+
+    groupedListApi.groupedList = ko.observableArray([]);
+    groupedListApi.table       = new api.paginatedTable();
+
+    groupedListApi.view              = {};
+    groupedListApi.view.afterRender  = function () {};
+    groupedListApi.view.afterAdd     = function () {};
+    groupedListApi.view.beforeRemove = function () {};
 
     // Property to group the list by
-    self.groupBy = ko.observable(null);
-    self.setGroupBy = function (p) {
+    groupedListApi.groupBy = ko.observable(null);
+    groupedListApi.setGroupBy = function (p) {
       self.groupBy(p);
       self.groupItems();
     };
@@ -1318,7 +1375,7 @@ module.exports = (function () {
 
     // Take the groupBy property and attempt to group the simple list by that
     // property
-    self.groupItems = function () {
+    groupedListApi.groupItems = function () {
       var p, list, temp, i, t;
 
       p = self.groupBy();
@@ -1366,6 +1423,17 @@ module.exports = (function () {
         }
       }
     };
+
+    /* PUBLIC API - LIST PUBLIC METHODS AND PROPERTIES HERE */
+    // Properties
+    this.groupedList = groupedListApi.groupedList;
+    this.table       = groupedListApi.table;
+    this.view        = groupedListApi.view;
+
+    // Methods
+    this.groupBy     = groupedListApi.groupBy;
+    this.setGroupBy  = groupedListApi.setGroupBy;
+    this.groupItems  = groupedListApi.groupItems;
   }; // END GROUPEDLIST
 
   api.page = function () {
@@ -1395,7 +1463,7 @@ module.exports = (function () {
         self.page(num);
         retVal = self.onChange();
       }
-
+      
       return retVal;
     };
 
@@ -1446,7 +1514,7 @@ module.exports = (function () {
       if (num != self.getPageSize()) {
         self.pageSize(num);
         self.totalPages(Math.ceil(self.totalCount() / self.pageSize()));
-        self.setPageToFirstAndTriggerOnChange();
+        self.setPageToFirstAndTriggerOnChange();    
         retVal = true;
       }
 
@@ -1521,17 +1589,14 @@ module.exports = (function () {
       return ret;
     };
 
-    self.toObj = function () {
-      var rowStart, rowEnd;
-      rowStart = (self.page() - 1) * self.pageSize() + 1;
-      rowEnd   = self.page() * self.pageSize();
-
+    self.toObj = function () {     
       return {
-        start_row:      rowStart,
-        end_row:        rowEnd,
+        page:           self.page(),
+        limit:          self.pageSize(),
         sort_col:       self.getSortCol(),
-        sort_direction: self.getSortDir()
-      };
+        sort_dir:       self.getSortDir()
+      }
+       
     };
 
     // Rely on the setter's validation when de-serializing - order of setters matters
@@ -1540,10 +1605,8 @@ module.exports = (function () {
         throw "Page: fromObj() accepts only an object with the appropriate properties";
       }
 
-      var p = obj.EndRow / self.pageSize();
-
-      self.setTotalCount(obj.TotalRows);
-      self.page(p);
+      self.setTotalCount(obj.total_rows);      
+      self.page(obj.page);
 
       return self;
     };
@@ -1621,6 +1684,7 @@ module.exports = (function () {
 
   return api;
 }());
+
 });
 
 require.define("/solum/components/dates.js",function(require,module,exports,__dirname,__filename,process,global){/*global solum:true, $:true, ko:true, module:true */
@@ -1639,18 +1703,17 @@ require.define("/solum/components/dates.js",function(require,module,exports,__di
  */
 
 module.exports = (function () {
-  "use strict";
+  // Access services library through root variable - easier to rename refactor later
 
   // Container for functions for the tables namespace
-  var Solum = require('../solum')
-    , api  = {};
+  var api  = {};
 
   /**
    * A smart-date object with a label and an associated date range
    */
-  api.smartDate = function () {
+  api.SmartDate = function () {
     var self = this;
-    self.slug  = null;
+    self.slug = ko.observable();
     self.name  = null;
     self.dates = {
       start: ko.observable(),
@@ -1661,7 +1724,7 @@ module.exports = (function () {
      * @param data A JSON representation of this object
      */
     self.fromJSON = function (data) {
-      self.slug = data.slug;
+      self.slug(data.slug);
       self.name = data.name;
       self.dates.start(data.dates.start);
       self.dates.end(data.dates.end);
@@ -1687,12 +1750,12 @@ module.exports = (function () {
 
     self.selectedSmartDate     = ko.observable();
     self.selectedSmartDateSlug = ko.observable();
-    self.validator             = Solum.getService('validator');
+    self.validator             = root.getService('validation', 'validator');
 
     // TODO: Figure out why we need this
     self.hasChanged            = false;
 
-    self.dates = Solum.getEntity('dateRange'); // Instantiate a new date entity
+    self.dates = new root.constructEntity('dateRange'); // Instantiate a new date entity
 
     // Smart date options
     self.smartDates = ko.observableArray([]);
@@ -1783,251 +1846,6 @@ module.exports = (function () {
 
 });
 
-require.define("/solum.js",function(require,module,exports,__dirname,__filename,process,global){/*global solum:true, $:true, ko:true, module:true */
-
-/**
- * solum.js
- * Author: Brandon Eum
- * Created: Sep 2012
- */
-
-/**
- * Dependencies:
- *  - Assumes jQuery
- *  - Assumes knockout.js
- */
-
-solum = (function () {
-  "use strict";
-
-  var api, decorateEntity, getSingleton;
-
-  // Keep as a function just in case we want to do something with it later
-  api = function () {};
-
-  /**
-   * Provide a clean way to do inheritance in JS
-   */
-  api.extend = function (subclass, superclass) {
-    var F = function () {};
-    F.prototype = superclass.prototype;
-    subclass.prototype = new F();
-    subclass.prototype.constructor = subclass;
-
-    // Provide the constructor of the superclass to the subclass
-    subclass.superclass = superclass.prototype;
-  };
-
-  /**
-   * Library-wide configurations that will be used by more than one service/model
-   *
-   * Right now, its just date/number localization, but could be other things in
-   * the future.
-   */
-  api.config = {
-    locale: "en",
-    dateAndNumberFormatLocalization: {
-      en: {
-        date: {
-          long_format: 'MMMM d, yyyy',
-          format:      'yyyy-M-dd',
-          pattern:     /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,
-          delimiter:   '-',
-          map:         {year: 2, month: 1, day: 0}
-        },
-        number: {
-          thousand_delimiter: ',',
-          decimal:            '.'
-        },
-        currency: {
-          currency_symbol:    '&#36;',
-          thousand_delimiter: ',',
-          decimal:            '.'
-        }
-      }
-    }
-  };
-
-  /**
-   * The locale is used in the translator and validator (for date formats) and is
-   * important enough that it deserves its own setter.
-   */
-  api.setLocale = function (loc) {
-    api.config.locale = loc;
-  };
-
-  /**
-   * The models namespace is for page models.  It should roughly be one model per
-   * page, unless those pages have the exact same elements and user interactions.
-   */
-  api.models = {};
-
-  api.getModel = function (group, model) {
-    if (typeof api.models[group] !== 'object' || typeof api.models[group][model] !== 'function') {
-      throw "The requested model does not exist.";
-    }
-
-    return new api.models[group][model]();
-  };
-
-  /**
-   * The components namespace is not implemented in this file, but accepts plug-in
-   * files that will use the services defined here to create re-useable models with
-   * knockout and jquery.
-   */
-  api.components = {};
-
-  api.getComponent = function (group, component) {
-    if (typeof api.components[group] !== 'object' || typeof api.components[group][component] !== 'function') {
-      throw "The requested component does not exist.";
-    }
-
-    return new api.components[group][component]();
-  };
-
-  /**
-   * The entities namespace is used to represent objects in your system.  They have
-   * properties and methods and know how to validate themselves for client-side
-   * validation.
-   */
-  api.entities = {};
-
-  /**
-   * Adds all of the necessary standard properties to the entity
-   */
-  decorateEntity = function (entity) {
-    var i;
-    entity.errors = {};
-    for (i in entity) {
-      if (entity.hasOwnProperty(i)) {
-        entity.errors[i] = ko.observableArray([]);
-      }
-    }
-
-    // Add a convenience method for checking if there are errors
-    entity.hasError = ko.computed(function () {
-      var hasError, i;
-
-      hasError = false;
-      for (i in this.errors) {
-        if (this.errors.hasOwnProperty(i) && this.errors[i]().length > 0) {
-          hasError = true;
-        }
-      }
-
-      return hasError;
-    }, entity);
-
-    // Make the standard properties non-enumerable -- Does not work in IE8 grrr...
-    if (typeof Object.defineProperty === 'function') {
-      Object.defineProperty(entity, 'constraints', {enumerable: false});
-      Object.defineProperty(entity, 'errors',      {enumerable: false});
-      Object.defineProperty(entity, 'hasError',    {enumerable: false});
-    }
-  };
-
-  /**
-   * It is a requirement that entities have no arguments in their constructor so
-   * that we can use a generic get method to get the entity.
-   */
-  api.constructEntity = function (name) {
-    if (typeof name !== 'string') {
-      throw "The entity name must be a string";
-    }
-    var entity = new api.entities[name]();
-    decorateEntity(entity);
-    return entity;
-  };
-
-  /**
-   * Be lazy about constructing instances of each service, and only construct them
-   * as needed.  They should be singleton objects, so store the single instance
-   * here.
-   */
-  api.instances = {};
-
-  /**
-   * If an instance exists and !isReset, return that, otherwise construct and set
-   * the singleton to be the newly constructed instance
-   */
-  getSingleton = function (group, name, config, isReset) {
-    var isRightType, doesGroupExist, doesSvcExist;
-
-    isRightType    = (typeof group === 'string' && typeof name === 'string');
-    doesGroupExist = (typeof api.services[group] === 'object');
-    doesSvcExist   = (doesGroupExist && typeof api.services[group][name] === 'function');
-
-    if (!isRightType || !doesSvcExist) {
-      throw "The requested service does not exist. Group: " + group + " , name: " + name;
-    }
-
-    // Check if an instances namespace for the group exists, otherwise create
-    if (typeof api.instances[group] !== 'object') {
-      api.instances[group] = {};
-      api.instances[group][name] = null;
-    }
-
-    // Create the new singleton and set as the global instance
-    if (api.instances[group][name] === null || isReset) {
-      api.instances[group][name] = new api.services[group][name](config);
-    }
-
-    return api.instances[group][name];
-  };
-
-  /**
-   * Get the singleton of one of the solum services, if it is not constructed,
-   * construct it here.
-   */
-  api.getService = function (group, name, config) {
-    return getSingleton(group, name, config, false);
-  };
-
-  /**
-   * Configure the options for a particular service, this will instantiate the
-   * service if it does not already exist.  This will also change the global config
-   * for that service for all cases that you are using it.
-   */
-  api.configureService = function (group, name, config) {
-    return getSingleton(group, name, config, true);
-  };
-
-  /**
-   * Services namespace houses:
-   *  - Ajax Management
-   *  - Validation
-   *  - Symfony-style Translation
-   */
-  api.services = {};
-
-  // Return solum's public API
-  return api;
-}());
-
-// Services
-solum.services.ajax        = require('./solum/services/ajax');
-solum.addAjaxRoutes        = solum.services.ajax.addAjaxRoutes;
-
-solum.services.validation  = require('./solum/services/validation');
-solum.constructConstraint  = solum.services.validation.constructConstraint;
-
-solum.services.translation = require('./solum/services/translation');
-solum.addDictionary        = solum.services.translation.addDictionary;
-
-solum.services.storage     = require('./solum/services/storage');
-
-// Components
-solum.components.tables    = require('./solum/components/tables');
-solum.components.dates     = require('./solum/components/dates');
-
-// Entities
-solum.entities.DateRange   = require('./solum/entities/DateRange');
-
-module.exports = solum;
-this.solum = solum;
-
-});
-
 require.define("/solum/entities/DateRange.js",function(require,module,exports,__dirname,__filename,process,global){/*global solum:true, $:true, ko:true, module:true */
 /*
  * solum - date range entity
@@ -2035,101 +1853,24 @@ require.define("/solum/entities/DateRange.js",function(require,module,exports,__
  * date: Sep 2012
  */
 
-/**
- * Represents a start and end date with validation
- */
-var DateRange = function () {
-  "use strict";
-
+// Modularize so we can abstract the use of "solum" to root just in case we change the name
+module.exports = function (solum) {
   var self, today, threeYearsAgo, localization, checkFormat, startConstraints;
   // Properties
   this.start = ko.observable('');
   this.end   = ko.observable('');
 
   // Constraints
-  self          = this;
-  today         = Date.today();
-  threeYearsAgo = Date.today().add({years: -3});
-
-  localization =  root.config.dateAndNumberFormatLocalization;
-  checkFormat = localization[root.config.locale];
-
-  /* TODO: Use new constraint format
-  startConstraints = [
-    {
-      constraint: 'notNull',
-      msgTranslations: {
-        START_END_DATE: {value: 'start date', mustTranslate: true, type: 'string'}
-      }
-    },
-    {constraint: 'date', params: {localization: checkFormat}},
-    {
-      constraint: 'minDate',
-      params: {minDate: threeYearsAgo},
-      msgTranslations: {
-        THREE_YEARS_AGO: {value: threeYearsAgo, mustTranslate: true, type: 'date'}
-      }
-    },
-    {
-      constraint: 'maxDate',
-      params: {maxDate: today},
-      msgTranslations: {
-        TODAY: {value: today, mustTranslate: true, type: 'date'}
-      }
-    },
-    {
-      constraint: function (s, checkFormat) {
-        var
-          delim,
-          map,
-          vals,
-          year,
-          month,
-          day,
-          start,
-          end;
-
-        delim  = checkFormat.delim;
-        map    = checkFormat.map;
-
-        // Avoid situations where one of the dates is not initialized
-        if (self.start() !== null || self.end() !== null) {
-          // Y/M/d value validation
-          vals  = self.start().split(delim);
-          year  = Number(vals[map.year]);
-          month = Number(vals[map.month]);
-          day   = Number(vals[map.day]);
-          start = new Date(year, month, day);
-
-          vals    = self.end().split(delim);
-          year    = Number(vals[map.year]);
-          month   = Number(vals[map.month]);
-          day     = Number(vals[map.day]);
-          end = new Date(year, month, day);
-
-          if (start > end) {
-            throw {error: "errors.form.date.start_greater_than_end"};
-          }
-        }
-
-        return true;
-      },
-      params: checkFormat
-    }
-  ];
-
   this.constraints = {
-    start: startConstraints,
-    end:   [
-      {constraint: 'notNull'},
-      {constraint: 'date', params: {localization: checkFormat}},
-      {constraint: 'minDate', params: {minDate: threeYearsAgo}},
-      {constraint: 'maxDate', params: {maxDate: today}}
+    start: [
+      solum.constructConstraint('general', 'notNull')        
+    ],
+    end: [
+      solum.constructConstraint('general', 'notNull')
     ]
-  };/**/
-};
+  };
 
-module.exports = DateRange;
+};
 });
 
 require.define("/solum.js",function(require,module,exports,__dirname,__filename,process,global){/*global solum:true, $:true, ko:true, module:true */
@@ -2273,6 +2014,57 @@ solum = (function () {
       Object.defineProperty(entity, 'errors',      {enumerable: false});
       Object.defineProperty(entity, 'hasError',    {enumerable: false});
     }
+    
+    var standardProperties = ['constraints', 'errors', 'hasError'];
+    
+    // Add a mapper function
+    entity.toObject = function () {
+      var i, obj = {};
+      for (i in this) {
+        // This is a standard property that should be ignored
+        if (!this.hasOwnProperty(i) || $.inArray(i, standardProperties) !== -1) {
+          continue;
+          
+        // recursively execute on embedded entities
+        } else if (typeof this[i] === 'object') {
+          obj[i] = this.toObject();
+        
+        // KO observable property - evaluate and set that property in return obj
+        } else {
+         obj[i] = this[i]();
+        }
+      };
+
+      return obj;
+    };
+
+    // Take a plain javascript object and convert to an entity
+    entity.fromObject = function (obj, ent) {
+      var i;
+      
+      // To allow for recursion on nested entities, force function to accept an
+      // entity.  The default though, is that it is operating on this.
+      if (!ent) {
+        ent = this;
+      }
+      
+      for (i in ent) {
+        // This is a standard property that should be ignored
+        if (!ent.hasOwnProperty(i) || $.inArray(i, standardProperties) !== -1) {
+          continue;  
+          
+        // recursively execute on embedded entities
+        } else if (typeof ent[i] === 'object') {
+          obj[i] = this.fromObject(obj[i], ent[i]);
+        
+        // KO observable property - set the value from the raw JS obj
+        } else {
+         ent[i](obj[i]);
+        }
+      };
+
+      return obj;
+    };
   };
 
   /**
@@ -2283,7 +2075,7 @@ solum = (function () {
     if (typeof name !== 'string') {
       throw "The entity name must be a string";
     }
-    var entity = new api.entities[name]();
+    var entity = new api.entities[name](api);
     decorateEntity(entity);
     return entity;
   };
@@ -2358,7 +2150,7 @@ solum.services.ajax        = require('./solum/services/ajax');
 solum.addAjaxRoutes        = solum.services.ajax.addAjaxRoutes;
 
 solum.services.validation  = require('./solum/services/validation');
-solum.constructConstraint  = solum.services.validation.constructConstraint;
+solum.constructConstraint  = solum.services.validation.constraints.constructConstraint;
 
 solum.services.translation = require('./solum/services/translation');
 solum.addDictionary        = solum.services.translation.addDictionary;
