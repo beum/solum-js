@@ -765,7 +765,7 @@ require.define("/lib/solum/services/constraints/date.js",function(require,module
 /**
  * Date related constraints
  */
-solum.services.validation.constraints.date = (function () {
+module.exports = (function () {
   "use strict";
   var date         = {};
   
@@ -831,6 +831,7 @@ solum.services.validation.constraints.date = (function () {
 
   return date;
 }());
+
 });
 
 require.define("/node_modules/moment/package.json",function(require,module,exports,__dirname,__filename,process,global){module.exports = {"main":"./moment.js"}
@@ -3051,7 +3052,7 @@ var moment = require('moment');
  */
 
 // Modularize so we can abstract the use of "solum" to root just in case we change the name
-solum.entities.DateRange = function (solum) {
+module.exports = function (solum) {
   var self         = this
     , format       = 'YYYY-MM-DD';
 
@@ -3110,6 +3111,7 @@ solum.entities.DateRange = function (solum) {
   };
 
 };
+
 });
 
 require.define("/lib/solum.js",function(require,module,exports,__dirname,__filename,process,global){/*global solum:true, $:true, ko:true, module:true */
