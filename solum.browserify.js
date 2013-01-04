@@ -437,7 +437,8 @@ module.exports = (function () {
     prefix: "", // Prefix to add to all AJAX requests
     ajax: $.ajax, // Method to call to make an ajax request
     badRequestHandler: function () {}, // Deals with 400 errors
-    errorHandler: function () {} // Deals with errors other than 400
+    errorHandler: function () {}, // Deals with errors other than 400,
+    suffix: "" // Suffix to add to all AJAX requests
   };
 
   /**
@@ -448,7 +449,7 @@ module.exports = (function () {
    * attempted.
    */
   ajax.manager = function (config) {
-    var self, prefix, ajaxMethod, badRequestHandler, errorHandler;
+    var self, prefix, ajaxMethod, badRequestHandler, errorHandler, suffix;
     self = this;
 
     // Merge the new config with the default configurations
@@ -458,6 +459,7 @@ module.exports = (function () {
     ajaxMethod        = config.ajax;
     badRequestHandler = config.badRequestHandler;
     errorHandler      = config.errorHandler;
+    suffix            = config.suffix;
 
     // Status flag should be one of: "OK","LOADING","FAILED","BAD_REQUEST"
     this.status = ko.observable("OK");
@@ -483,7 +485,7 @@ module.exports = (function () {
 
       // Setup the route parameters by first extracting string-replacement parameters
       // defined in the route
-      url = prefix + route.url;
+      url = prefix + route.url + suffix;
 
       for (i in route.params) {
         if (route.params.hasOwnProperty(i)) {
@@ -506,6 +508,7 @@ module.exports = (function () {
     };
 
     this.request = function (routeName, params, success) {
+      
       if (typeof ajax.routes[routeName] !== "object") {
         throw "AjaxManager.request(): The requested route does not exist";
       }
