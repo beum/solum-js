@@ -3075,7 +3075,7 @@ module.exports = function (solum) {
 
   max_range_constraint.test = function () {
     // Make sure that both dates are valid first
-    if (self.errors.start().length > 0 || self.errors.length() > 0) {
+    if (self.errors.start().length > 0 || self.errors.end().length > 0) {
       return;
     }
 
@@ -3092,7 +3092,7 @@ module.exports = function (solum) {
 
   min_range_constraint.test = function () {
     // Make sure that both dates are valid first
-    if (self.errors.start().length > 0 || self.errors.length() > 0) {
+    if (self.errors.start().length > 0 || self.errors.end().length > 0) {
       return;
     }
 
