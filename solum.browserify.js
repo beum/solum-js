@@ -768,27 +768,30 @@ require.define("/lib/solum/services/constraints/date.js",function(require,module
 module.exports = (function () {
   "use strict";
   var date         = {};
-  
+
   /**
    * Check that the date format is valid
-   * 
+   *
    * TODO: Set the date format somewhere else
    */
   date.isValid = function (params, msg) {
     var self            = this;
     self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.is_valid';
+    self.defaultMsg     = 'errors.form.date.invalid';
     self.msg            = (msg) ? msg : self.defaultMsg;
     self.params         = params;
 
     self.test = function (subject) {
-      if (!moment(subject, self.params.format).isValid()) {
+      // Must do a regex check because moment ignores non-numeric characters
+      if (!self.params.format_regex.test(subject)) {
+        throw {error: self.msg};
+      } else if (!moment(subject, self.params.format).isValid()) {
         throw {error: self.msg};
       }
       return true;
     };
   };
-  
+
   /**
    * Min Date Constraint
    */
@@ -808,7 +811,7 @@ module.exports = (function () {
       return true;
     };
   };
-  
+
   /**
    * Max Date Constraint
    */
@@ -3054,57 +3057,80 @@ var moment = require('moment');
 // Modularize so we can abstract the use of "solum" to root just in case we change the name
 module.exports = function (solum) {
   var self         = this
-    , format       = 'YYYY-MM-DD';
+    , format       = 'YYYY-MM-DD'
+    , format_regex = /^[0-9]{4}-[0-1]{1}[1-2]{1}-[0-3]{1}[0-9]{1}$/;
 
   // Properties
   this.properties = {};
   this.properties.start = ko.observable('');
   this.properties.end   = ko.observable('');
-  
+
   // Define an entity-level constraint
   // Manually construct them here
   // TODO: Need to figure out a more holistic solution to multi-property constraints
-  
+
   var max_range_constraint    = {};
   max_range_constraint.params = {max: 3, unit: 'years'};
   max_range_constraint.msg    = 'errors.form.date.max_range';
-    
+
   max_range_constraint.test = function () {
+    // Make sure that both dates are valid first
+    if (self.errors.start().length > 0 || self.errors.length() > 0) {
+      return;
+    }
+
     var start_moment = moment(self.properties.start(), format);
     var end_moment   = moment(self.properties.end(), format);
     if (start_moment.diff(end_moment, this.params.unit) > this.params.max) {
       throw {error: this.msg, constraint: this.params.max};
     }
   };
-  
+
   var min_range_constraint    = {};
   min_range_constraint.params = {min: 0, unit: 'days'};
   min_range_constraint.msg    = 'errors.form.date.min_range';
-    
+
   min_range_constraint.test = function () {
+    // Make sure that both dates are valid first
+    if (self.errors.start().length > 0 || self.errors.length() > 0) {
+      return;
+    }
+
     var start_moment = moment(self.properties.start(), format);
     var end_moment   = moment(self.properties.end(), format);
-    
+
     if (start_moment.diff(end_moment, this.params.unit) > this.params.min) {
       throw {error: this.msg, constraint: this.params.max};
     }
   };
 
   // Constraints
+  var min_params = {
+    format: format,
+    format_regex: format_regex,
+    min: moment().subtract('years', 3).startOf('year')
+  };
+
+  var max_params = {
+    format: format,
+    format_regex: format_regex,
+    max: moment().startOf('day')
+  };
+
   this.constraints = {
     start: [
-      solum.constructConstraint('general', 'notNull'),
-      solum.constructConstraint('date', 'isValid', {format: format}),
-      solum.constructConstraint('date', 'min', {format: format, min: moment().subtract('years', 3).startOf('year')}),
-      solum.constructConstraint('date', 'max', {format: format, max: moment()}),
+      solum.constructConstraint('general', 'notNull', {}, 'errors.form.date.not_null'),
+      solum.constructConstraint('date', 'isValid', {format: format, format_regex: format_regex}),
+      solum.constructConstraint('date', 'min', min_params),
+      solum.constructConstraint('date', 'max', max_params),
       min_range_constraint,
       max_range_constraint
     ],
     end: [
-      solum.constructConstraint('general', 'notNull'),
-      solum.constructConstraint('date', 'isValid', {format: format}),
-      solum.constructConstraint('date', 'min', {format: format, min: moment().subtract('years', 3).startOf('year')}),
-      solum.constructConstraint('date', 'max', {format: format, max: moment()}),
+      solum.constructConstraint('general', 'notNull', {}, 'errors.form.date.not_null'),
+      solum.constructConstraint('date', 'isValid', {format: format, format_regex: format_regex}),
+      solum.constructConstraint('date', 'min', min_params),
+      solum.constructConstraint('date', 'max', max_params),
       min_range_constraint,
       max_range_constraint
     ]
