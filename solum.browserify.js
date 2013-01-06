@@ -630,29 +630,43 @@ module.exports = (function () {
      * them against the constraints
      */
     self.isEntityValid = function (entity) {
-      var isValid, i, j, errors;
-      isValid = true;
+      var is_valid, i, j, errors;
+      is_valid = true;
 
       // Loop through all of the properties and validate
       for (i in entity.properties) {
-        // Validate the KO observable property
-        errors = self.isValid(entity.properties[i](), entity.constraints[i]);
-
         // Clear existing errors
-        entity.errors[i].removeAll();
+          entity.errors[i].removeAll();
 
-        // Add new errors to the error object
-        for (j in errors) {
-          if (errors.hasOwnProperty(j)) {
-            entity.errors[i].push(errors[j]);
+        // Check if the property is a sub-entity, if yes, recursively validate, if not
+        // validate the property
+        if (entity.properties[i].is_entity) {
+          is_valid = self.isEntityValid(entity.properties[i]);
+
+          // Add the error to the sub-entity's errors array
+          // Note: If there is an error the view should be directly connected to
+          //       the sub-entity's errors, however, this will indicate that the
+          //       current entity is not valid
+          if (!is_valid) {
+            entity.error[i].push('errors.form.sub_entity.invalid');
+          }
+        } else {
+          // Validate the KO observable property
+          errors = self.isValid(entity.properties[i](), entity.constraints[i]);
+
+          // Add new errors to the error object
+          for (j in errors) {
+            if (errors.hasOwnProperty(j)) {
+              entity.errors[i].push(errors[j]);
+            }
+          }
+
+          if (errors.length > 0) {
+            is_valid = false;
           }
         }
-
-        if (errors.length > 0) {
-          isValid = false;
-        }
       }
-      return isValid;
+      return is_valid;
     };
 
     // Public method to validate an object/literal via a list of constraints
@@ -684,7 +698,7 @@ module.exports = (function () {
    * Namespace for constraints for validation
    */
   validation.constraints = {};
-  
+
   /**
    * Construct a constraint with the right parameters and translated message
    */
@@ -706,11 +720,11 @@ module.exports = (function () {
       throw {error: self.msg};
     };
   };
-  
+
   validation.constraints.general = require('./constraints/general');
   validation.constraints.date    = require('./constraints/date');
   validation.constraints.string  = require('./constraints/string');
-  
+
   return validation;
 }());
 
@@ -3254,12 +3268,15 @@ solum = (function () {
    */
   decorateEntity = function (entity) {
     var i;
-    
+
+    // Setup a flag to indicate that this is an entity - for validation purposes
+    entity.is_entity = true;
+
     // Setup error properties mirroring the actual properties
     entity.errors = {};
     for (i in entity.properties) {
       entity.errors[i] = ko.observableArray([]);
-      
+
       // Provide top-level access to obsevable properties
       entity[i] = entity.properties[i];
     }
@@ -3278,9 +3295,6 @@ solum = (function () {
       return hasError;
     }, entity);
 
-    
-    var standardProperties = ['constraints', 'errors', 'hasError'];
-    
     // Add a mapper function
     entity.toObject = function () {
       var i, obj = {};
@@ -3289,7 +3303,7 @@ solum = (function () {
         // Call the toObject method on the nested entity
         if (typeof self.properties[i] === 'object') {
           obj[i] = self.properties[i].toObject();
-        
+
         // KO observable property - evaluate and set that property in return obj
         } else {
          obj[i] = self.properties[i]();
@@ -3299,15 +3313,15 @@ solum = (function () {
       return obj;
     };
 
-    // Take a plain javascript object and convert to an entity
+    // Take a plain javascript object and add its properties to this entity
     entity.fromObject = function (obj) {
       var i, self = this;
-      
+
       for (i in self.properties) {
         // Call fromObject on the embedded entity
         if (typeof self.properties[i] === 'object') {
           obj[i] = self.properties[i].fromObject(obj[i]);
-        
+
         // KO observable property - set the value from the raw JS obj
         } else {
          self.properties[i](obj[i]);
