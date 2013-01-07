@@ -1,9 +1,10 @@
 {
   "name": "solum",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "private": true,
   "main":"lib/solum",
   "dependencies": {
+    "underscore":"latest",
     "moment":"latest",
     "browserify":"latest",
     "uglify-js":"latest"
