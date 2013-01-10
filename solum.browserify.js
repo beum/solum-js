@@ -438,7 +438,8 @@ module.exports = (function () {
     ajax: $.ajax, // Method to call to make an ajax request
     badRequestHandler: function () {}, // Deals with 400 errors
     errorHandler: function () {}, // Deals with errors other than 400,
-    suffix: "" // Suffix to add to all AJAX requests
+    suffix: "", // Suffix to add to all AJAX requests
+    requestWrapper: null // A key with which to wrap all AJAX requests parameters
   };
 
   /**
@@ -449,7 +450,7 @@ module.exports = (function () {
    * attempted.
    */
   ajax.manager = function (config) {
-    var self, prefix, ajaxMethod, badRequestHandler, errorHandler, suffix;
+    var self, prefix, ajaxMethod, badRequestHandler, errorHandler, suffix, requestWrapper;
     self = this;
 
     // Merge the new config with the default configurations
@@ -460,6 +461,7 @@ module.exports = (function () {
     badRequestHandler = config.badRequestHandler;
     errorHandler      = config.errorHandler;
     suffix            = config.suffix;
+    requestWrapper    = config.requestWrapper;
 
     // Status flag should be one of: "OK","LOADING","FAILED","BAD_REQUEST"
     this.status = ko.observable("OK");
@@ -521,7 +523,7 @@ module.exports = (function () {
 
     // Use the injected ajax request and error handling to make the ajax call
     this.makeRequest = function (route, params, success) {
-      var cnt, url;
+      var cnt, url, data;
 
       self.status("LOADING");
 
@@ -536,6 +538,14 @@ module.exports = (function () {
       }
 
       url = self.generateURL(route.name, params);
+      
+      // Add the extra parameter wrapper if one was defined
+      if (requestWrapper) {
+        data = {};
+        data[requestWrapper] = params.data;
+      } else {
+        data = params.data;
+      }
 
       // Return the ajax object (if using jquery)
       // Assume makeAjaxRequest takes jquery-like parameters, otherwise expect
@@ -543,7 +553,7 @@ module.exports = (function () {
       self.pendingRequests[cnt] = ajaxMethod({
         url: url,
         type: route.method,
-        data: params.data,
+        data: data,
 
         // Set the timeout to 5 minutes - Should this be longer?
         timeout: 600000,
