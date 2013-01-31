@@ -580,7 +580,9 @@ module.exports = (function () {
       return self.makeRequest(ajax.routes[routeName], params, success, error_callbacks);
     };
 
-    // Use the injected ajax request and error handling to make the ajax call
+    /**
+     * 
+     */
     this.makeRequest = function (route, params, success, error_callbacks) {
       var cnt, url, data, request;
 
@@ -665,8 +667,8 @@ module.exports = (function () {
       // Add the request to the list of pending requests after adding the route
       // to identify it
       request.route = route.name;
-      request.isSimultaneousRequest = request.isSimultaneousRequest;
-      self.pendingRequests.push(request);
+      request.isSimultaneousRequest = params.isSimultaneousRequest;
+      self.pendingRequests[cnt] = request;
 
       return request;
     };
