@@ -622,8 +622,19 @@ module.exports = (function () {
 
         // Delegate handling the data to the calling object
         success: function (data, textStatus, jqXHR) {
-          self.status("OK");
+          var i, is_request_still_running = false;
           self.pendingRequests[cnt] = null;
+
+          for (i in self.pendingRequests) {
+            if (self.pendingRequests[i] !== null) {
+              is_request_still_running = true;
+            }
+          }
+          
+          if (!is_request_still_running) {
+            self.status("OK");
+          }
+          
           return success(data);
         },
         statusCode: {
