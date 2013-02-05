@@ -741,8 +741,9 @@ module.exports = (function () {
      * them against the constraints
      */
     self.isEntityValid = function (entity) {
-      var is_valid, i, j, errors;
-      is_valid = true;
+      var is_valid, are_sub_entities_valid, i, j, errors;
+      is_valid               = true;
+      are_sub_entities_valid = true;
 
       // Clear entity-level errors
       entity.errors.entity.removeAll();
@@ -755,14 +756,15 @@ module.exports = (function () {
         // Check if the property is a sub-entity, if yes, recursively validate, if not
         // validate the property
         if (entity.properties[i].is_entity) {
-          is_valid = self.isEntityValid(entity.properties[i]);
+          are_sub_entities_valid = self.isEntityValid(entity.properties[i]);
 
           // Add the error to the sub-entity's errors array
           // Note: If there is an error the view should be directly connected to
           //       the sub-entity's errors, however, this will indicate that the
           //       current entity is not valid
-          if (!is_valid) {
+          if (!are_sub_entities_valid) {
             entity.errors.properties[i].push('errors.form.sub_entity.invalid');
+            is_valid = false;
           }
         } else {
           // Validate the KO observable property
