@@ -4795,6 +4795,31 @@ solum = (function () {
         return obj;
       };
     }
+    
+    // Add a reset function that will clear the values of all the properties back
+    // to their undefined/empty state
+    if (typeof entity.reset !== 'function') {
+      entity.reset = function () {
+        var i, self = this;
+
+        for (i in self.properties) {
+          // Call fromObject on the embedded entity
+          if (self.properties[i].is_entity) {
+            self.properties[i].reset();
+
+          // Entity Collection - Clear the collection
+          } else if (self.properties[i].is_entity_collection) {
+            self.properties[i].removeAll();
+
+          // KO observable property - set the value to be undefined
+          } else {
+           self.properties[i](undefined);
+          }
+        };
+
+        return self;
+      };
+    }
   };
 
   /**
