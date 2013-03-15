@@ -388,7 +388,8 @@ module.exports = (function () {
     badRequestHandler: function () {}, // Deals with 400 errors
     errorHandler: function () {}, // Deals with errors other than 400,
     suffix: "", // Suffix to add to all AJAX requests
-    requestWrapper: null // A key with which to wrap all AJAX requests parameters
+    requestWrapper: null, // A key with which to wrap all AJAX requests parameters
+    locale: "en"
   };
 
   /**
@@ -399,7 +400,7 @@ module.exports = (function () {
    * attempted.
    */
   ajax.manager = function (config) {
-    var self, prefix, ajaxMethod, badRequestHandler, errorHandler, suffix, requestWrapper;
+    var self, prefix, ajaxMethod, badRequestHandler, errorHandler, suffix, requestWrapper, locale;
     self = this;
 
     // Merge the new config with the default configurations
@@ -411,6 +412,7 @@ module.exports = (function () {
     errorHandler      = config.errorHandler;
     suffix            = config.suffix;
     requestWrapper    = config.requestWrapper;
+    locale            = config.locale;
 
     // Status flag should be one of: "OK","LOADING","FAILED","BAD_REQUEST"
     this.status = ko.observable("OK");
@@ -434,6 +436,10 @@ module.exports = (function () {
         throw "AjaxManager.generateURL(): The requested route does not exist: " + routeName;
       } else {
         route = ajax.routes[routeName];
+      }
+
+      if (route.requires_locale && (route.url).indexOf(locale) < 0) {
+          route.url = locale + '/' + route.url;
       }
 
       // Setup the route parameters by first extracting string-replacement parameters
