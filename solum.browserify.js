@@ -430,7 +430,7 @@ module.exports = (function () {
      * A helper function to take the parameters and either replace them in the
      * base URL or add as query string params, or leave alone
      */
-    this.generateURL = function (routeName, params, should_generate_query_string) {
+    this.generateURL = function (routeName, params, should_generate_query_string, return_base_path_url) {
       var route, data, url, i, isDataUndefined, doesParamNotExist;
       if (typeof ajax.routes[routeName] !== "object") {
         throw "AjaxManager.generateURL(): The requested route does not exist: " + routeName;
@@ -444,7 +444,7 @@ module.exports = (function () {
 
       // Setup the route parameters by first extracting string-replacement parameters
       // defined in the route
-      url = prefix + route.url + suffix;
+      url = return_base_path_url ? route.url : prefix + route.url + suffix;
 
       for (i in route.params) {
         if (route.params.hasOwnProperty(i)) {
@@ -626,142 +626,6 @@ module.exports = (function () {
 }());
 
 })()
-},{}],4:[function(require,module,exports){
-(function(){/*global solum:true, $:true, ko:true, module:true */
-
-/*
- * solum.js - translation
- * author: brandon eum
- * date: Sep 2012
- */
-
-/**
- * Dependencies:
- *  - Assumes knockout.js
- *  - Assumes solum.js
- */
-
-/**
- *
- */
-module.exports = (function (root) {
-  "use strict";
-
-  /**
-   * Translation namespace for all objects/functions related to translation
-   */
-  var translation = {};
-
-  /**
-   * Container for all of the translation dictionaries available.
-   */
-  translation.dictionary = {en: {}};
-
-  translation.addDictionary = function (dict) {
-    // This will overwrite existing entries with the new dictionary
-    translation.dictionary = $.extend(true, {}, dict, translation.dictionary);
-  };
-
-  /**
-   * Use the global settings for the localization settings, but set no dictionary
-   * by default.
-   */
-  translation.defaultConfig = {
-    // Use the global locale
-    //locale: root.config.locale,
-    // Use the global date/number format localization
-    //dateNumberLocalization: root.config.dateAndNumberFormatLocalization
-    locale: "en"
-  };
-
-  /**
-   * The mirage translator provides symfony2-style translation based on a dictionary
-   * and date/number localization.
-   */
-  translation.translator = function (config) {
-    var self, locale, dictionary, translations, localized_format;
-
-    // Merge the new config with the default configurations
-    config = $.extend({}, translation.defaultConfig, config);
-
-    self             = this;
-    locale           = config.locale;
-    dictionary       = translation.dictionary;
-    translations     = dictionary[locale];
-    //localized_format = config.dateNumberLocalization[locale];
-
-    /**
-     * Mimics the symfony translator, which will look in the specified dictionary,
-     * find the correct translation based on '.' delimited keys and replace any
-     * wildcards.
-     */
-    self.translate = function (text, replace) {
-      var key, keys, trans, i, j, r, v;
-
-      keys = text.split('.');
-      trans = translations;
-
-      // Loop through the keys and find the proper translation
-      for (j in keys) {
-        if (keys.hasOwnProperty(j)) {
-          if (typeof trans[keys[j]] === 'string' || typeof trans[keys[j]] === 'object') {
-            trans = trans[keys[j]];
-          } else {
-            // Could not find translation, use given text
-            trans = text;
-          }
-        }
-      }
-
-      // Replace wildcards with the appropriate text replacement
-      for (i in replace) {
-        if (replace.hasOwnProperty(i)) {
-          key = '%' + i + '%';
-
-          // Does the text replacement need translation?
-          if (!replace[i].mustTranslate) {
-            trans = trans.replace(key, replace[i]);
-          } else {
-            // Use different translation engines depending on the type
-            r = replace[i];
-            v = r.value;
-            if (r.type === 'date') {
-              v = self.dateToLocalizedString(v);
-            } else if (r.type === 'number') {
-              v = self.numberToLocalizedNumberString(v);
-            } else if (r.type === 'currency') {
-              v = self.numberToLocalizedCurrencyString(v);
-            } else {
-              v = self.translate(v);
-            }
-
-            trans = trans.replace(key, v);
-          }
-        }
-      }
-
-      return trans;
-    };
-
-    /**
-     * Translate a JS date object to a localized date string
-     */
-    self.dateToLocalizedString = function (dateObj) {
-      if (!(dateObj instanceof Date)) {
-        throw "Translator.dateToLocalizedString: tried to translate a non-date object.";
-      }
-
-      return dateObj.toString(localized_format.date.format);
-    };
-
-    self.numberToLocalizedNumberString = function (num) {};
-    self.numberToLocalizedCurrencyString = function (num) {};
-  };// END TRANSLATOR
-
-  return translation;
-}());
-
-})()
 },{}],5:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true, localStorage:true, sessionStorage:true */
 
@@ -937,6 +801,300 @@ module.exports = (function () {
 
   return storage;
 }());
+})()
+},{}],7:[function(require,module,exports){
+(function(){/*global solum:true, $:true, ko:true, module:true */
+
+/*
+ * solum.js - date range model
+ * author: brandon eum
+ * date: Sep 2012
+ */
+
+/**
+ * Dependencies:
+ *  - Assumes jQuery
+ *  - Assumes knockout.js
+ *  - Assumes solum.js
+ */
+
+module.exports = (function () {
+  // Access services library through root variable - easier to rename refactor later
+
+  // Container for functions for the tables namespace
+  var api  = {};
+
+  /**
+   * A smart-date object with a label and an associated date range
+   */
+  api.SmartDate = function () {
+    var self = this;
+    self.slug = ko.observable();
+    self.name  = null;
+    self.dates = {
+      start: ko.observable(),
+      end:   ko.observable()
+    };
+
+    /**
+     * @param data A JSON representation of this object
+     */
+    self.fromJSON = function (data) {
+      self.slug(data.slug);
+      self.name = data.name;
+      self.dates.start(data.dates.start);
+      self.dates.end(data.dates.end);
+    };
+  };
+
+  /**
+   * A list of smart dates that can be toggled through to reset the date range
+   *
+   * TODO: Refactor the date range model to use a sub-object for smart dates
+   */
+  api.smartDateMenu = {};
+
+
+  /**
+   * Represents a combination of a smart date menu and range input to have back
+   * and forth communication between the smart date menu and range input.
+   */
+  api.DateRange = function (root) {
+    var self, ignoreDateSubscription;
+
+    self = this;
+
+    self.selectedSmartDate     = ko.observable();
+    self.selectedSmartDateSlug = ko.observable();
+    self.validator             = root.getService('validation', 'validator');
+
+    // TODO: Figure out why we need this
+    self.hasChanged            = false;
+
+    self.dates = new root.constructEntity('DateRange'); // Instantiate a new date entity
+
+    // Smart date options
+    self.smartDates = ko.observableArray([]);
+
+    // Convenience method to add smart date options
+    self.addSmartDates = function (smart_dates) {
+      var i, sd;
+      for (i in smart_dates) {
+        if (smart_dates.hasOwnProperty(i)) {
+          sd = new api.SmartDate();
+          sd.fromJSON(smart_dates[i]);
+          self.smartDates.push(sd);
+        }
+      }
+    };
+
+    /**
+     * Listens for any changes to the selectedSmartDateSlug
+     *   which is the slug value of a SmartDate object.
+     */
+    self.selectedSmartDateSlug.subscribe(function (selectedSlug) {
+      var s, found, i, start, end;
+
+      // get the SmartDate object we are using here
+      s = self.smartDates();
+
+      found = false;
+      for (i in s) {
+        if (s.hasOwnProperty(i) && s[i].slug() === selectedSlug) {
+          self.selectedSmartDate(s[i]);
+          found = true;
+        }
+      }
+
+      // Make sure it was a valid smart date
+      if (found) {
+        // update the dates.start and dates.end properties
+        start = self.selectedSmartDate().dates.start();
+        end   = self.selectedSmartDate().dates.end();
+
+        // Need to avoid recursive calls to the start/end date subscriptions
+        ignoreDateSubscription = true;
+        self.dates.start(start);
+        self.dates.end(end);
+        ignoreDateSubscription = false;
+      }
+    });
+
+    /**
+     * When someone changes the date manually, it changes the date range to custom
+     */
+    ignoreDateSubscription = false;
+
+    self.updateToCustom = function () {
+      var start, end;
+      start = self.dates.start();
+      end   = self.dates.end();
+
+      // Helps the page object determine whether or not to change the page back
+      // to 1
+      self.hasChanged = true;
+      self.validator.isEntityValid(self.dates);
+
+      if (self.selectedSmartDateSlug() !== 'custom' && !ignoreDateSubscription) {
+        self.selectedSmartDateSlug('custom');
+
+        // Will not create an infinite loop because the selectedSmartDateSlug is now 'custom'
+        self.dates.start(start);
+        self.dates.end(end);
+      }
+    };
+
+    self.dates.start.subscribe(self.updateToCustom);
+    self.dates.end.subscribe(self.updateToCustom);
+
+    self.isCustomSelected = ko.computed(function () {
+      return (self.selectedSmartDateSlug() === 'custom');
+    }, this);
+  };
+
+
+  return api;
+}());
+
+
+
+
+})()
+},{}],4:[function(require,module,exports){
+(function(){/*global solum:true, $:true, ko:true, module:true */
+
+/*
+ * solum.js - translation
+ * author: brandon eum
+ * date: Sep 2012
+ */
+
+/**
+ * Dependencies:
+ *  - Assumes knockout.js
+ *  - Assumes solum.js
+ */
+
+/**
+ *
+ */
+module.exports = (function (root) {
+  "use strict";
+
+  /**
+   * Translation namespace for all objects/functions related to translation
+   */
+  var translation = {};
+
+  /**
+   * Container for all of the translation dictionaries available.
+   */
+  translation.dictionary = {en: {}};
+
+  translation.addDictionary = function (dict) {
+    // This will overwrite existing entries with the new dictionary
+    translation.dictionary = $.extend(true, {}, dict, translation.dictionary);
+  };
+
+  /**
+   * Use the global settings for the localization settings, but set no dictionary
+   * by default.
+   */
+  translation.defaultConfig = {
+    // Use the global locale
+    //locale: root.config.locale,
+    // Use the global date/number format localization
+    //dateNumberLocalization: root.config.dateAndNumberFormatLocalization
+    locale: "en"
+  };
+
+  /**
+   * The mirage translator provides symfony2-style translation based on a dictionary
+   * and date/number localization.
+   */
+  translation.translator = function (config) {
+    var self, locale, dictionary, translations, localized_format;
+
+    // Merge the new config with the default configurations
+    config = $.extend({}, translation.defaultConfig, config);
+
+    self             = this;
+    locale           = config.locale;
+    dictionary       = translation.dictionary;
+    translations     = dictionary[locale];
+    //localized_format = config.dateNumberLocalization[locale];
+
+    /**
+     * Mimics the symfony translator, which will look in the specified dictionary,
+     * find the correct translation based on '.' delimited keys and replace any
+     * wildcards.
+     */
+    self.translate = function (text, replace) {
+      var key, keys, trans, i, j, r, v;
+
+      keys = text.split('.');
+      trans = translations;
+
+      // Loop through the keys and find the proper translation
+      for (j in keys) {
+        if (keys.hasOwnProperty(j)) {
+          if (typeof trans[keys[j]] === 'string' || typeof trans[keys[j]] === 'object') {
+            trans = trans[keys[j]];
+          } else {
+            // Could not find translation, use given text
+            trans = text;
+          }
+        }
+      }
+
+      // Replace wildcards with the appropriate text replacement
+      for (i in replace) {
+        if (replace.hasOwnProperty(i)) {
+          key = '%' + i + '%';
+
+          // Does the text replacement need translation?
+          if (!replace[i].mustTranslate) {
+            trans = trans.replace(key, replace[i]);
+          } else {
+            // Use different translation engines depending on the type
+            r = replace[i];
+            v = r.value;
+            if (r.type === 'date') {
+              v = self.dateToLocalizedString(v);
+            } else if (r.type === 'number') {
+              v = self.numberToLocalizedNumberString(v);
+            } else if (r.type === 'currency') {
+              v = self.numberToLocalizedCurrencyString(v);
+            } else {
+              v = self.translate(v);
+            }
+
+            trans = trans.replace(key, v);
+          }
+        }
+      }
+
+      return trans;
+    };
+
+    /**
+     * Translate a JS date object to a localized date string
+     */
+    self.dateToLocalizedString = function (dateObj) {
+      if (!(dateObj instanceof Date)) {
+        throw "Translator.dateToLocalizedString: tried to translate a non-date object.";
+      }
+
+      return dateObj.toString(localized_format.date.format);
+    };
+
+    self.numberToLocalizedNumberString = function (num) {};
+    self.numberToLocalizedCurrencyString = function (num) {};
+  };// END TRANSLATOR
+
+  return translation;
+}());
+
 })()
 },{}],6:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true */
@@ -1402,164 +1560,6 @@ module.exports = (function () {
 }());
 
 })()
-},{}],7:[function(require,module,exports){
-(function(){/*global solum:true, $:true, ko:true, module:true */
-
-/*
- * solum.js - date range model
- * author: brandon eum
- * date: Sep 2012
- */
-
-/**
- * Dependencies:
- *  - Assumes jQuery
- *  - Assumes knockout.js
- *  - Assumes solum.js
- */
-
-module.exports = (function () {
-  // Access services library through root variable - easier to rename refactor later
-
-  // Container for functions for the tables namespace
-  var api  = {};
-
-  /**
-   * A smart-date object with a label and an associated date range
-   */
-  api.SmartDate = function () {
-    var self = this;
-    self.slug = ko.observable();
-    self.name  = null;
-    self.dates = {
-      start: ko.observable(),
-      end:   ko.observable()
-    };
-
-    /**
-     * @param data A JSON representation of this object
-     */
-    self.fromJSON = function (data) {
-      self.slug(data.slug);
-      self.name = data.name;
-      self.dates.start(data.dates.start);
-      self.dates.end(data.dates.end);
-    };
-  };
-
-  /**
-   * A list of smart dates that can be toggled through to reset the date range
-   *
-   * TODO: Refactor the date range model to use a sub-object for smart dates
-   */
-  api.smartDateMenu = {};
-
-
-  /**
-   * Represents a combination of a smart date menu and range input to have back
-   * and forth communication between the smart date menu and range input.
-   */
-  api.DateRange = function (root) {
-    var self, ignoreDateSubscription;
-
-    self = this;
-
-    self.selectedSmartDate     = ko.observable();
-    self.selectedSmartDateSlug = ko.observable();
-    self.validator             = root.getService('validation', 'validator');
-
-    // TODO: Figure out why we need this
-    self.hasChanged            = false;
-
-    self.dates = new root.constructEntity('DateRange'); // Instantiate a new date entity
-
-    // Smart date options
-    self.smartDates = ko.observableArray([]);
-
-    // Convenience method to add smart date options
-    self.addSmartDates = function (smart_dates) {
-      var i, sd;
-      for (i in smart_dates) {
-        if (smart_dates.hasOwnProperty(i)) {
-          sd = new api.SmartDate();
-          sd.fromJSON(smart_dates[i]);
-          self.smartDates.push(sd);
-        }
-      }
-    };
-
-    /**
-     * Listens for any changes to the selectedSmartDateSlug
-     *   which is the slug value of a SmartDate object.
-     */
-    self.selectedSmartDateSlug.subscribe(function (selectedSlug) {
-      var s, found, i, start, end;
-
-      // get the SmartDate object we are using here
-      s = self.smartDates();
-
-      found = false;
-      for (i in s) {
-        if (s.hasOwnProperty(i) && s[i].slug() === selectedSlug) {
-          self.selectedSmartDate(s[i]);
-          found = true;
-        }
-      }
-
-      // Make sure it was a valid smart date
-      if (found) {
-        // update the dates.start and dates.end properties
-        start = self.selectedSmartDate().dates.start();
-        end   = self.selectedSmartDate().dates.end();
-
-        // Need to avoid recursive calls to the start/end date subscriptions
-        ignoreDateSubscription = true;
-        self.dates.start(start);
-        self.dates.end(end);
-        ignoreDateSubscription = false;
-      }
-    });
-
-    /**
-     * When someone changes the date manually, it changes the date range to custom
-     */
-    ignoreDateSubscription = false;
-
-    self.updateToCustom = function () {
-      var start, end;
-      start = self.dates.start();
-      end   = self.dates.end();
-
-      // Helps the page object determine whether or not to change the page back
-      // to 1
-      self.hasChanged = true;
-      self.validator.isEntityValid(self.dates);
-
-      if (self.selectedSmartDateSlug() !== 'custom' && !ignoreDateSubscription) {
-        self.selectedSmartDateSlug('custom');
-
-        // Will not create an infinite loop because the selectedSmartDateSlug is now 'custom'
-        self.dates.start(start);
-        self.dates.end(end);
-      }
-    };
-
-    self.dates.start.subscribe(self.updateToCustom);
-    self.dates.end.subscribe(self.updateToCustom);
-
-    self.isCustomSelected = ko.computed(function () {
-      return (self.selectedSmartDateSlug() === 'custom');
-    }, this);
-  };
-
-
-  return api;
-}());
-
-
-
-
-})()
 },{}],3:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true */
 
@@ -1869,7 +1869,223 @@ module.exports = function (solum) {
 };
 
 })()
-},{"moment":13}],13:[function(require,module,exports){
+},{"moment":13}],10:[function(require,module,exports){
+var moment = require('moment');
+
+/**
+ * Date related constraints
+ */
+module.exports = (function () {
+  "use strict";
+  var date         = {};
+
+  /**
+   * Check that the date format is valid
+   *
+   * TODO: Set the date format somewhere else
+   */
+  date.isValid = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.invalid';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      // Must do a regex check because moment ignores non-numeric characters
+      if (!self.params.format_regex.test(subject)) {
+        throw {error: self.msg};
+      } else if (!moment(subject, self.params.format).isValid()) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Min Date Constraint
+   */
+  date.min = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.min';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      var subj_moment = moment(subject, self.params.format);
+
+      if (subj_moment.diff(self.params.min, 'days') < 0) {
+        throw {error: self.msg, constraint: params.min};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Max Date Constraint
+   */
+  date.max = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.max';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      var subj_moment = moment(subject, self.params.format);
+
+      if (subj_moment.diff(self.params.max, 'days') > 0) {
+        throw {error: self.msg, constraint: params.max};
+      }
+      return true;
+    };
+  };
+
+  return date;
+}());
+
+},{"moment":13}],9:[function(require,module,exports){
+var _ = require('underscore');
+
+/**
+ * Constraints for any type of subject
+ */
+module.exports = (function () {
+  "use strict";
+
+  var general = {};
+
+  /**
+   * Validates that the field is not null or undefined
+   */
+  general.notNull = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.notNull'
+    self.defaultMsg = 'errors.form.general.not_null';
+    self.msg        = (msg) ? msg : self.defaultMsg;
+    self.params     = params;
+
+    self.test = function (subject) {
+      if (subject === '' || subject === null || subject === undefined) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Checks the type of the subject using the typeof operator
+   */
+  general.type = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.type';
+    self.defaultMsg = 'errors.form.general.type';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (subject) {
+      if ((self.params.type === "null" && subject !== null) || typeof subject !== self.params.type) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Ensures the subject is one of the given choices
+   */
+  general.choice = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.choice';
+    self.defaultMsg = 'errors.form.general.type';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (subject) {;
+      if (_.indexOf(self.params.choices, subject) === -1) {
+        throw {error: msg};
+      }
+      return true;
+    };
+  };
+
+  return general;
+}());
+
+},{"underscore":14}],12:[function(require,module,exports){
+var _ = require('underscore');
+
+/**
+ * Methods for validating a collection of solum entities
+ */
+module.exports = (function () {
+  "use strict";
+
+  var collection = {};
+
+  /**
+   * Loops through a KO observable array of entities and validates each of them
+   */
+  collection.validate = function (params, msg) {
+    var self        = this;
+    self.name       = 'collection.validate';
+    self.defaultMsg = 'errors.form.collection.validate';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (entities) {
+      var i;
+
+      for (i in entities) {
+        if (!params.validator.isEntityValid(entities[i])) {
+          throw {error: self.msg};
+        }
+      }
+
+      return true;
+    };
+  };
+
+  /**
+   * Checks the uniqueness of a specific property across a collection of entities
+   */
+  collection.unique = function (params, msg) {
+    var self        = this;
+    self.name       = 'collection.unique';
+    self.defaultMsg = 'errors.form.collection.unique';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (entities) {
+      var values, unique_values
+        , property = self.params.property;
+
+      // Map the array of entities to flatten to a list of values
+      values = _.map(entities, function (value, key, list) {
+        return value[property]();
+      });
+
+      unique_values = _.uniq(values);
+
+      if (values.length !== unique_values.length) {
+        throw {error: self.msg};
+      }
+
+      return true;
+    };
+  };
+
+
+  return collection;
+}());
+
+
+},{"underscore":14}],13:[function(require,module,exports){
 (function(){// moment.js
 // version : 2.0.0
 // author : Tim Wood
@@ -3272,223 +3488,7 @@ module.exports = function (solum) {
 }).call(this);
 
 })()
-},{}],9:[function(require,module,exports){
-var _ = require('underscore');
-
-/**
- * Constraints for any type of subject
- */
-module.exports = (function () {
-  "use strict";
-
-  var general = {};
-
-  /**
-   * Validates that the field is not null or undefined
-   */
-  general.notNull = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.notNull'
-    self.defaultMsg = 'errors.form.general.not_null';
-    self.msg        = (msg) ? msg : self.defaultMsg;
-    self.params     = params;
-
-    self.test = function (subject) {
-      if (subject === '' || subject === null || subject === undefined) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Checks the type of the subject using the typeof operator
-   */
-  general.type = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.type';
-    self.defaultMsg = 'errors.form.general.type';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (subject) {
-      if ((self.params.type === "null" && subject !== null) || typeof subject !== self.params.type) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Ensures the subject is one of the given choices
-   */
-  general.choice = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.choice';
-    self.defaultMsg = 'errors.form.general.type';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (subject) {;
-      if (_.indexOf(self.params.choices, subject) === -1) {
-        throw {error: msg};
-      }
-      return true;
-    };
-  };
-
-  return general;
-}());
-
-},{"underscore":14}],10:[function(require,module,exports){
-var moment = require('moment');
-
-/**
- * Date related constraints
- */
-module.exports = (function () {
-  "use strict";
-  var date         = {};
-
-  /**
-   * Check that the date format is valid
-   *
-   * TODO: Set the date format somewhere else
-   */
-  date.isValid = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.invalid';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      // Must do a regex check because moment ignores non-numeric characters
-      if (!self.params.format_regex.test(subject)) {
-        throw {error: self.msg};
-      } else if (!moment(subject, self.params.format).isValid()) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Min Date Constraint
-   */
-  date.min = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.min';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      var subj_moment = moment(subject, self.params.format);
-
-      if (subj_moment.diff(self.params.min, 'days') < 0) {
-        throw {error: self.msg, constraint: params.min};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Max Date Constraint
-   */
-  date.max = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.max';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      var subj_moment = moment(subject, self.params.format);
-
-      if (subj_moment.diff(self.params.max, 'days') > 0) {
-        throw {error: self.msg, constraint: params.max};
-      }
-      return true;
-    };
-  };
-
-  return date;
-}());
-
-},{"moment":13}],12:[function(require,module,exports){
-var _ = require('underscore');
-
-/**
- * Methods for validating a collection of solum entities
- */
-module.exports = (function () {
-  "use strict";
-
-  var collection = {};
-
-  /**
-   * Loops through a KO observable array of entities and validates each of them
-   */
-  collection.validate = function (params, msg) {
-    var self        = this;
-    self.name       = 'collection.validate';
-    self.defaultMsg = 'errors.form.collection.validate';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (entities) {
-      var i;
-
-      for (i in entities) {
-        if (!params.validator.isEntityValid(entities[i])) {
-          throw {error: self.msg};
-        }
-      }
-
-      return true;
-    };
-  };
-
-  /**
-   * Checks the uniqueness of a specific property across a collection of entities
-   */
-  collection.unique = function (params, msg) {
-    var self        = this;
-    self.name       = 'collection.unique';
-    self.defaultMsg = 'errors.form.collection.unique';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (entities) {
-      var values, unique_values
-        , property = self.params.property;
-
-      // Map the array of entities to flatten to a list of values
-      values = _.map(entities, function (value, key, list) {
-        return value[property]();
-      });
-
-      unique_values = _.uniq(values);
-
-      if (values.length !== unique_values.length) {
-        throw {error: self.msg};
-      }
-
-      return true;
-    };
-  };
-
-
-  return collection;
-}());
-
-
-},{"underscore":14}],14:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 (function(){//     Underscore.js 1.4.4
 //     http://underscorejs.org
 //     (c) 2009-2013 Jeremy Ashkenas, DocumentCloud Inc.
