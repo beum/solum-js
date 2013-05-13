@@ -109,6 +109,29 @@ solum = (function () {
   api.entities = {};
 
   /**
+   * Generate an anonymouns function to return
+   */
+  var hasErrorFunctionGenerator = function (key, entity) {
+    return ko.computed(function () {
+      return (entity.errors.properties[key]().length > 0);
+    });
+  };
+
+  /**
+   *
+   */
+  var getFirstErrorFunctionGenerator = function (key, entity) {
+    return ko.computed(function () {
+      var error = '';
+      if (entity.errors.properties[key]().length > 0) {
+        error = entity.errors.properties[key]()[0];
+      }
+
+      return error;
+    });
+  };
+
+  /**
    * Adds all of the necessary standard properties to the entity
    */
   decorateEntity = function (entity) {
@@ -126,7 +149,12 @@ solum = (function () {
       entity.errors.properties[i] = ko.observableArray([]);
 
       // Provide top-level access to obsevable properties
-      entity[i] = entity.properties[i];
+      if (typeof entity[i] !== 'function') {
+        entity[i] = entity.properties[i];
+      }
+
+      entity[i].hasError = hasErrorFunctionGenerator(i, entity);
+      entity[i].getError = getFirstErrorFunctionGenerator(i, entity);
     }
 
     // Add a convenience method for checking if there are errors
@@ -174,6 +202,10 @@ solum = (function () {
       entity.fromObject = function (obj) {
         var i, j, collection, ent, self = this;
 
+        if (!obj) {
+          throw "Solum.js - entity.fromObject: Cannot construct entity from object, object is undefined";
+        }
+
         for (i in self.properties) {
           // Call fromObject on the embedded entity
           if (self.properties[i].is_entity) {
@@ -183,10 +215,10 @@ solum = (function () {
           // add to the collection
           } else if (self.properties[i].is_entity_collection) {
             collection = obj[i];
-            
+
             // Empty the collection first before adding things back
             self.properties[i].removeAll();
-            
+
             for (j in collection) {
               ent = api.constructEntity(self.properties[i].entity_type);
               ent.fromObject(collection[j]);
@@ -202,7 +234,7 @@ solum = (function () {
         return obj;
       };
     }
-    
+
     // Add a reset function that will clear the values of all the properties back
     // to their undefined/empty state
     if (typeof entity.reset !== 'function') {
@@ -3276,77 +3308,7 @@ module.exports = function (solum) {
 }).call(this);
 
 })()
-},{}],9:[function(require,module,exports){
-var _ = require('underscore');
-
-/**
- * Constraints for any type of subject
- */
-module.exports = (function () {
-  "use strict";
-
-  var general = {};
-
-  /**
-   * Validates that the field is not null or undefined
-   */
-  general.notNull = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.notNull'
-    self.defaultMsg = 'errors.form.general.not_null';
-    self.msg        = (msg) ? msg : self.defaultMsg;
-    self.params     = params;
-
-    self.test = function (subject) {
-      if (subject === '' || subject === null || subject === undefined) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Checks the type of the subject using the typeof operator
-   */
-  general.type = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.type';
-    self.defaultMsg = 'errors.form.general.type';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (subject) {
-      if ((self.params.type === "null" && subject !== null) || typeof subject !== self.params.type) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Ensures the subject is one of the given choices
-   */
-  general.choice = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.choice';
-    self.defaultMsg = 'errors.form.general.type';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (subject) {;
-      if (_.indexOf(self.params.choices, subject) === -1) {
-        throw {error: msg};
-      }
-      return true;
-    };
-  };
-
-  return general;
-}());
-
-},{"underscore":14}],10:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 var moment = require('moment');
 
 /**
@@ -3422,7 +3384,77 @@ module.exports = (function () {
   return date;
 }());
 
-},{"moment":13}],12:[function(require,module,exports){
+},{"moment":13}],9:[function(require,module,exports){
+var _ = require('underscore');
+
+/**
+ * Constraints for any type of subject
+ */
+module.exports = (function () {
+  "use strict";
+
+  var general = {};
+
+  /**
+   * Validates that the field is not null or undefined
+   */
+  general.notNull = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.notNull'
+    self.defaultMsg = 'errors.form.general.not_null';
+    self.msg        = (msg) ? msg : self.defaultMsg;
+    self.params     = params;
+
+    self.test = function (subject) {
+      if (subject === '' || subject === null || subject === undefined) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Checks the type of the subject using the typeof operator
+   */
+  general.type = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.type';
+    self.defaultMsg = 'errors.form.general.type';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (subject) {
+      if ((self.params.type === "null" && subject !== null) || typeof subject !== self.params.type) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Ensures the subject is one of the given choices
+   */
+  general.choice = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.choice';
+    self.defaultMsg = 'errors.form.general.type';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (subject) {;
+      if (_.indexOf(self.params.choices, subject) === -1) {
+        throw {error: msg};
+      }
+      return true;
+    };
+  };
+
+  return general;
+}());
+
+},{"underscore":14}],12:[function(require,module,exports){
 var _ = require('underscore');
 
 /**
