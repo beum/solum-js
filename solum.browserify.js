@@ -421,7 +421,8 @@ module.exports = (function () {
     errorHandler: function () {}, // Deals with errors other than 400,
     suffix: "", // Suffix to add to all AJAX requests
     requestWrapper: null, // A key with which to wrap all AJAX requests parameters
-    locale: "en"
+    locale: "en",
+    lsLocale: "us"
   };
 
   /**
@@ -432,7 +433,7 @@ module.exports = (function () {
    * attempted.
    */
   ajax.manager = function (config) {
-    var self, prefix, ajaxMethod, badRequestHandler, errorHandler, suffix, requestWrapper, locale;
+    var self, prefix, ajaxMethod, badRequestHandler, errorHandler, suffix, requestWrapper, locale, lsLocale;
     self = this;
 
     // Merge the new config with the default configurations
@@ -445,7 +446,7 @@ module.exports = (function () {
     suffix            = config.suffix;
     requestWrapper    = config.requestWrapper;
     locale            = config.locale;
-
+    lsLocale          = config.lsLocale;
     // Status flag should be one of: "OK","LOADING","FAILED","BAD_REQUEST"
     this.status = ko.observable("OK");
 
@@ -3308,7 +3309,77 @@ module.exports = function (solum) {
 }).call(this);
 
 })()
-},{}],10:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
+var _ = require('underscore');
+
+/**
+ * Constraints for any type of subject
+ */
+module.exports = (function () {
+  "use strict";
+
+  var general = {};
+
+  /**
+   * Validates that the field is not null or undefined
+   */
+  general.notNull = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.notNull'
+    self.defaultMsg = 'errors.form.general.not_null';
+    self.msg        = (msg) ? msg : self.defaultMsg;
+    self.params     = params;
+
+    self.test = function (subject) {
+      if (subject === '' || subject === null || subject === undefined) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Checks the type of the subject using the typeof operator
+   */
+  general.type = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.type';
+    self.defaultMsg = 'errors.form.general.type';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (subject) {
+      if ((self.params.type === "null" && subject !== null) || typeof subject !== self.params.type) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Ensures the subject is one of the given choices
+   */
+  general.choice = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.choice';
+    self.defaultMsg = 'errors.form.general.type';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (subject) {;
+      if (_.indexOf(self.params.choices, subject) === -1) {
+        throw {error: msg};
+      }
+      return true;
+    };
+  };
+
+  return general;
+}());
+
+},{"underscore":14}],10:[function(require,module,exports){
 var moment = require('moment');
 
 /**
@@ -3384,77 +3455,7 @@ module.exports = (function () {
   return date;
 }());
 
-},{"moment":13}],9:[function(require,module,exports){
-var _ = require('underscore');
-
-/**
- * Constraints for any type of subject
- */
-module.exports = (function () {
-  "use strict";
-
-  var general = {};
-
-  /**
-   * Validates that the field is not null or undefined
-   */
-  general.notNull = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.notNull'
-    self.defaultMsg = 'errors.form.general.not_null';
-    self.msg        = (msg) ? msg : self.defaultMsg;
-    self.params     = params;
-
-    self.test = function (subject) {
-      if (subject === '' || subject === null || subject === undefined) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Checks the type of the subject using the typeof operator
-   */
-  general.type = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.type';
-    self.defaultMsg = 'errors.form.general.type';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (subject) {
-      if ((self.params.type === "null" && subject !== null) || typeof subject !== self.params.type) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Ensures the subject is one of the given choices
-   */
-  general.choice = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.choice';
-    self.defaultMsg = 'errors.form.general.type';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (subject) {;
-      if (_.indexOf(self.params.choices, subject) === -1) {
-        throw {error: msg};
-      }
-      return true;
-    };
-  };
-
-  return general;
-}());
-
-},{"underscore":14}],12:[function(require,module,exports){
+},{"moment":13}],12:[function(require,module,exports){
 var _ = require('underscore');
 
 /**
