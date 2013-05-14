@@ -42,6 +42,7 @@ solum = (function () {
    */
   api.config = {
     locale: "en",
+    lsLocale: "us",
     dateAndNumberFormatLocalization: {
       en: {
         date: {
@@ -421,8 +422,7 @@ module.exports = (function () {
     errorHandler: function () {}, // Deals with errors other than 400,
     suffix: "", // Suffix to add to all AJAX requests
     requestWrapper: null, // A key with which to wrap all AJAX requests parameters
-    locale: "en",
-    lsLocale: "us"
+    locale: "en"
   };
 
   /**
@@ -433,7 +433,7 @@ module.exports = (function () {
    * attempted.
    */
   ajax.manager = function (config) {
-    var self, prefix, ajaxMethod, badRequestHandler, errorHandler, suffix, requestWrapper, locale, lsLocale;
+    var self, prefix, ajaxMethod, badRequestHandler, errorHandler, suffix, requestWrapper, locale;
     self = this;
 
     // Merge the new config with the default configurations
@@ -446,7 +446,7 @@ module.exports = (function () {
     suffix            = config.suffix;
     requestWrapper    = config.requestWrapper;
     locale            = config.locale;
-    lsLocale          = config.lsLocale;
+
     // Status flag should be one of: "OK","LOADING","FAILED","BAD_REQUEST"
     this.status = ko.observable("OK");
 
