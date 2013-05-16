@@ -3402,6 +3402,10 @@ module.exports = (function () {
     self.params         = params;
 
     self.test = function (subject) {
+      // if date is optional, do not validate with regex
+      if (self.params.is_optional && subject.trim() == '') {
+         return true;
+      }
       // Must do a regex check because moment ignores non-numeric characters
       if (!self.params.format_regex.test(subject)) {
         throw {error: self.msg};
