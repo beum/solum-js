@@ -659,6 +659,142 @@ module.exports = (function () {
 }());
 
 })()
+},{}],4:[function(require,module,exports){
+(function(){/*global solum:true, $:true, ko:true, module:true */
+
+/*
+ * solum.js - translation
+ * author: brandon eum
+ * date: Sep 2012
+ */
+
+/**
+ * Dependencies:
+ *  - Assumes knockout.js
+ *  - Assumes solum.js
+ */
+
+/**
+ *
+ */
+module.exports = (function (root) {
+  "use strict";
+
+  /**
+   * Translation namespace for all objects/functions related to translation
+   */
+  var translation = {};
+
+  /**
+   * Container for all of the translation dictionaries available.
+   */
+  translation.dictionary = {en: {}};
+
+  translation.addDictionary = function (dict) {
+    // This will overwrite existing entries with the new dictionary
+    translation.dictionary = $.extend(true, {}, dict, translation.dictionary);
+  };
+
+  /**
+   * Use the global settings for the localization settings, but set no dictionary
+   * by default.
+   */
+  translation.defaultConfig = {
+    // Use the global locale
+    //locale: root.config.locale,
+    // Use the global date/number format localization
+    //dateNumberLocalization: root.config.dateAndNumberFormatLocalization
+    locale: "en"
+  };
+
+  /**
+   * The mirage translator provides symfony2-style translation based on a dictionary
+   * and date/number localization.
+   */
+  translation.translator = function (config) {
+    var self, locale, dictionary, translations, localized_format;
+
+    // Merge the new config with the default configurations
+    config = $.extend({}, translation.defaultConfig, config);
+
+    self             = this;
+    locale           = config.locale;
+    dictionary       = translation.dictionary;
+    translations     = dictionary[locale];
+    //localized_format = config.dateNumberLocalization[locale];
+
+    /**
+     * Mimics the symfony translator, which will look in the specified dictionary,
+     * find the correct translation based on '.' delimited keys and replace any
+     * wildcards.
+     */
+    self.translate = function (text, replace) {
+      var key, keys, trans, i, j, r, v;
+
+      keys = text.split('.');
+      trans = translations;
+
+      // Loop through the keys and find the proper translation
+      for (j in keys) {
+        if (keys.hasOwnProperty(j)) {
+          if (typeof trans[keys[j]] === 'string' || typeof trans[keys[j]] === 'object') {
+            trans = trans[keys[j]];
+          } else {
+            // Could not find translation, use given text
+            trans = text;
+          }
+        }
+      }
+
+      // Replace wildcards with the appropriate text replacement
+      for (i in replace) {
+        if (replace.hasOwnProperty(i)) {
+          key = '%' + i + '%';
+
+          // Does the text replacement need translation?
+          if (!replace[i].mustTranslate) {
+            trans = trans.replace(key, replace[i]);
+          } else {
+            // Use different translation engines depending on the type
+            r = replace[i];
+            v = r.value;
+            if (r.type === 'date') {
+              v = self.dateToLocalizedString(v);
+            } else if (r.type === 'number') {
+              v = self.numberToLocalizedNumberString(v);
+            } else if (r.type === 'currency') {
+              v = self.numberToLocalizedCurrencyString(v);
+            } else {
+              v = self.translate(v);
+            }
+
+            trans = trans.replace(key, v);
+          }
+        }
+      }
+
+      return trans;
+    };
+
+    /**
+     * Translate a JS date object to a localized date string
+     */
+    self.dateToLocalizedString = function (dateObj) {
+      if (!(dateObj instanceof Date)) {
+        throw "Translator.dateToLocalizedString: tried to translate a non-date object.";
+      }
+
+      return dateObj.toString(localized_format.date.format);
+    };
+
+    self.numberToLocalizedNumberString = function (num) {};
+    self.numberToLocalizedCurrencyString = function (num) {};
+  };// END TRANSLATOR
+
+  return translation;
+}());
+
+})()
 },{}],5:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true, localStorage:true, sessionStorage:true */
 
@@ -834,142 +970,6 @@ module.exports = (function () {
 
   return storage;
 }());
-})()
-},{}],4:[function(require,module,exports){
-(function(){/*global solum:true, $:true, ko:true, module:true */
-
-/*
- * solum.js - translation
- * author: brandon eum
- * date: Sep 2012
- */
-
-/**
- * Dependencies:
- *  - Assumes knockout.js
- *  - Assumes solum.js
- */
-
-/**
- *
- */
-module.exports = (function (root) {
-  "use strict";
-
-  /**
-   * Translation namespace for all objects/functions related to translation
-   */
-  var translation = {};
-
-  /**
-   * Container for all of the translation dictionaries available.
-   */
-  translation.dictionary = {en: {}};
-
-  translation.addDictionary = function (dict) {
-    // This will overwrite existing entries with the new dictionary
-    translation.dictionary = $.extend(true, {}, dict, translation.dictionary);
-  };
-
-  /**
-   * Use the global settings for the localization settings, but set no dictionary
-   * by default.
-   */
-  translation.defaultConfig = {
-    // Use the global locale
-    //locale: root.config.locale,
-    // Use the global date/number format localization
-    //dateNumberLocalization: root.config.dateAndNumberFormatLocalization
-    locale: "en"
-  };
-
-  /**
-   * The mirage translator provides symfony2-style translation based on a dictionary
-   * and date/number localization.
-   */
-  translation.translator = function (config) {
-    var self, locale, dictionary, translations, localized_format;
-
-    // Merge the new config with the default configurations
-    config = $.extend({}, translation.defaultConfig, config);
-
-    self             = this;
-    locale           = config.locale;
-    dictionary       = translation.dictionary;
-    translations     = dictionary[locale];
-    //localized_format = config.dateNumberLocalization[locale];
-
-    /**
-     * Mimics the symfony translator, which will look in the specified dictionary,
-     * find the correct translation based on '.' delimited keys and replace any
-     * wildcards.
-     */
-    self.translate = function (text, replace) {
-      var key, keys, trans, i, j, r, v;
-
-      keys = text.split('.');
-      trans = translations;
-
-      // Loop through the keys and find the proper translation
-      for (j in keys) {
-        if (keys.hasOwnProperty(j)) {
-          if (typeof trans[keys[j]] === 'string' || typeof trans[keys[j]] === 'object') {
-            trans = trans[keys[j]];
-          } else {
-            // Could not find translation, use given text
-            trans = text;
-          }
-        }
-      }
-
-      // Replace wildcards with the appropriate text replacement
-      for (i in replace) {
-        if (replace.hasOwnProperty(i)) {
-          key = '%' + i + '%';
-
-          // Does the text replacement need translation?
-          if (!replace[i].mustTranslate) {
-            trans = trans.replace(key, replace[i]);
-          } else {
-            // Use different translation engines depending on the type
-            r = replace[i];
-            v = r.value;
-            if (r.type === 'date') {
-              v = self.dateToLocalizedString(v);
-            } else if (r.type === 'number') {
-              v = self.numberToLocalizedNumberString(v);
-            } else if (r.type === 'currency') {
-              v = self.numberToLocalizedCurrencyString(v);
-            } else {
-              v = self.translate(v);
-            }
-
-            trans = trans.replace(key, v);
-          }
-        }
-      }
-
-      return trans;
-    };
-
-    /**
-     * Translate a JS date object to a localized date string
-     */
-    self.dateToLocalizedString = function (dateObj) {
-      if (!(dateObj instanceof Date)) {
-        throw "Translator.dateToLocalizedString: tried to translate a non-date object.";
-      }
-
-      return dateObj.toString(localized_format.date.format);
-    };
-
-    self.numberToLocalizedNumberString = function (num) {};
-    self.numberToLocalizedCurrencyString = function (num) {};
-  };// END TRANSLATOR
-
-  return translation;
-}());
-
 })()
 },{}],6:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true */
@@ -1647,48 +1647,73 @@ module.exports = (function () {
 
       // Loop through all of the properties and validate
       for (i in entity.properties) {
-        // Clear existing property errors
-          entity.errors.properties[i].removeAll();
-
-        // Check if the property is a sub-entity, if yes, recursively validate, if not
-        // validate the property
-        if (entity.properties[i].is_entity) {
-          are_sub_entities_valid = self.isEntityValid(entity.properties[i]);
-
-          // Add the error to the sub-entity's errors array
-          // Note: If there is an error the view should be directly connected to
-          //       the sub-entity's errors, however, this will indicate that the
-          //       current entity is not valid
-          if (!are_sub_entities_valid) {
-            entity.errors.properties[i].push('errors.form.sub_entity.invalid');
-            is_valid = false;
-          }
-
-          // Validate the KO observable property - Pass in the entire sub-entity
-          // as it is an object and not a function
-          errors = self.isValid(entity.properties[i], entity.constraints.properties[i]);
-        } else {
-          // Validate the KO observable property
-          errors = self.isValid(entity.properties[i](), entity.constraints.properties[i]);
-        }
-
-        // Add new errors to the error object
-        for (j in errors) {
-          entity.errors.properties[i].push(errors[j]);
-        }
-
-        if (errors.length > 0) {
-          is_valid = false;
-        }
+        // This will only be true if every property is valid because it is being
+        // AND'd with the previous result
+        is_valid = is_valid && self.isPropertyValid(
+          entity.properties[i],
+          entity.constraints.properties[i],
+          entity.errors.properties[i]
+        )
       }
 
       // Confirm the entity-level constraints
       if (is_valid) {
         errors = self.isValid(entity, entity.constraints.entity_constraints);
+
+        is_valid = (errors.length === 0);
+
         for (j in errors) {
           entity.errors.entity.push(errors[j]);
         }
       }
+
+      return is_valid;
+    };
+
+    /**
+     * Validate a single property - if it is a sub-entity, recursively validate
+     * @param {type} property
+     * @param {type} constraints
+     * @param {type} errors
+     * @returns {Boolean}
+     */
+    self.isPropertyValid = function (property, constraints, errors) {
+      var is_valid = true;
+
+      // Clear existing property errors
+      errors.removeAll();
+
+      // Check if the property is a sub-entity, if yes, recursively validate, if not
+      // validate the property
+      if (property.is_entity) {
+        var are_sub_entities_valid = self.isEntityValid(property);
+
+        // Add the error to the sub-entity's errors array
+        // Note: If there is an error the view should be directly connected to
+        //       the sub-entity's errors, however, this will indicate that the
+        //       current entity is not valid
+        if (!are_sub_entities_valid) {
+          errors.push('errors.form.sub_entity.invalid');
+          is_valid = false;
+        }
+
+        // Validate the KO observable property - Pass in the entire sub-entity
+        // as it is an object and not a function
+        errors = self.isValid(property, constraints);
+      } else {
+        // Validate the KO observable property
+        errors = self.isValid(property(), constraints);
+      }
+
+      // Add new errors to the error object
+      if (errors.length > 0) {
+        is_valid = false;
+      }
+
+      for (var j in errors) {
+        errors.push(errors[j]);
+      }
+
       return is_valid;
     };
 
@@ -1906,6 +1931,86 @@ module.exports = function (solum) {
 };
 
 })()
+},{"moment":13}],10:[function(require,module,exports){
+var moment = require('moment');
+
+/**
+ * Date related constraints
+ */
+module.exports = (function () {
+  "use strict";
+  var date         = {};
+
+  /**
+   * Check that the date format is valid
+   *
+   * TODO: Set the date format somewhere else
+   */
+  date.isValid = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.invalid';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      // if date is optional, do not validate with regex
+      if (self.params.is_optional && subject == undefined) {
+         return true;
+      }
+      // Must do a regex check because moment ignores non-numeric characters
+      if (!self.params.format_regex.test(subject)) {
+        throw {error: self.msg};
+      } else if (!moment(subject, self.params.format).isValid()) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Min Date Constraint
+   */
+  date.min = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.min';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      var subj_moment = moment(subject, self.params.format);
+
+      if (subj_moment.diff(self.params.min, 'days') < 0) {
+        throw {error: self.msg, constraint: params.min};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Max Date Constraint
+   */
+  date.max = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.max';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      var subj_moment = moment(subject, self.params.format);
+
+      if (subj_moment.diff(self.params.max, 'days') > 0) {
+        throw {error: self.msg, constraint: params.max};
+      }
+      return true;
+    };
+  };
+
+  return date;
+}());
+
 },{"moment":13}],13:[function(require,module,exports){
 (function(){// moment.js
 // version : 2.0.0
@@ -3309,87 +3414,7 @@ module.exports = function (solum) {
 }).call(this);
 
 })()
-},{}],10:[function(require,module,exports){
-var moment = require('moment');
-
-/**
- * Date related constraints
- */
-module.exports = (function () {
-  "use strict";
-  var date         = {};
-
-  /**
-   * Check that the date format is valid
-   *
-   * TODO: Set the date format somewhere else
-   */
-  date.isValid = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.invalid';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      // if date is optional, do not validate with regex
-      if (self.params.is_optional && subject == undefined) {
-         return true;
-      }
-      // Must do a regex check because moment ignores non-numeric characters
-      if (!self.params.format_regex.test(subject)) {
-        throw {error: self.msg};
-      } else if (!moment(subject, self.params.format).isValid()) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Min Date Constraint
-   */
-  date.min = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.min';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      var subj_moment = moment(subject, self.params.format);
-
-      if (subj_moment.diff(self.params.min, 'days') < 0) {
-        throw {error: self.msg, constraint: params.min};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Max Date Constraint
-   */
-  date.max = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.max';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      var subj_moment = moment(subject, self.params.format);
-
-      if (subj_moment.diff(self.params.max, 'days') > 0) {
-        throw {error: self.msg, constraint: params.max};
-      }
-      return true;
-    };
-  };
-
-  return date;
-}());
-
-},{"moment":13}],9:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 var _ = require('underscore');
 
 /**
