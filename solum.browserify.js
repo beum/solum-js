@@ -42,7 +42,6 @@ solum = (function () {
    */
   api.config = {
     locale: "en",
-    lsLocale: "us",
     dateAndNumberFormatLocalization: {
       en: {
         date: {
@@ -156,6 +155,11 @@ solum = (function () {
 
       entity[i].hasError = hasErrorFunctionGenerator(i, entity);
       entity[i].getError = getFirstErrorFunctionGenerator(i, entity);
+
+      // Provide a reference to the parent entity for validation purposes and to
+      // the property key that references this property
+      entity.properties[i].__parent = entity;
+      entity.properties[i].__name   = i;
     }
 
     // Add a convenience method for checking if there are errors
@@ -367,12 +371,13 @@ solum.components.dates     = require('./solum/components/dates');
 
 // Entities
 solum.entities.DateRange   = require('./solum/entities/DateRange');
+solum.entities.Primitive   = require('./solum/entities/Primitive');
 
 module.exports = solum;
 this.solum = solum;
 
 })()
-},{"./solum/services/ajax":2,"./solum/services/validation":3,"./solum/services/translation":4,"./solum/services/storage":5,"./solum/components/tables":6,"./solum/components/dates":7,"./solum/entities/DateRange":8}],2:[function(require,module,exports){
+},{"./solum/services/ajax":2,"./solum/services/validation":3,"./solum/services/translation":4,"./solum/services/storage":5,"./solum/components/tables":6,"./solum/components/dates":7,"./solum/entities/DateRange":8,"./solum/entities/Primitive":9}],2:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true */
 
 /*
@@ -1593,6 +1598,44 @@ module.exports = (function () {
 
 
 })()
+},{}],9:[function(require,module,exports){
+/**
+ * Provide a way to turn primitives into solum entities
+ * This allows people to use entity collection functions and validation on primitive
+ * values
+ */
+var Primitive = function Primitive() {
+  var self = this;
+
+  this.properties = {};
+  this.properties.value = ko.observable();
+
+  // Enforced Constraints
+  this.constraints = {};
+  this.constraints.properties = {
+    value: []
+  };
+};
+
+/**
+ * Return a string primitive as the serialization method
+ * @returns string
+ */
+Primitive.prototype.toObject = function () {
+  return this.value();
+};
+
+/**
+ * The AgeDemographics property is a simple array of strings so we need to
+ * serialize from a string primitive and not an object
+ *
+ * @param string value
+ */
+Primitive.prototype.fromObject = function (value) {
+  this.value(value);
+};
+
+module.exports = Primitive;
 },{}],3:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true */
 
@@ -1638,7 +1681,7 @@ module.exports = (function () {
      * them against the constraints
      */
     self.isEntityValid = function (entity) {
-      var is_valid, are_sub_entities_valid, i, j, errors;
+      var is_valid, are_sub_entities_valid, i, j, errors, curr_check = true;
       is_valid               = true;
       are_sub_entities_valid = true;
 
@@ -1649,11 +1692,8 @@ module.exports = (function () {
       for (i in entity.properties) {
         // This will only be true if every property is valid because it is being
         // AND'd with the previous result
-        is_valid = is_valid && self.isPropertyValid(
-          entity.properties[i],
-          entity.constraints.properties[i],
-          entity.errors.properties[i]
-        )
+        curr_check = self.isPropertyValid(entity.properties[i]);
+        is_valid = is_valid && curr_check;
       }
 
       // Confirm the entity-level constraints
@@ -1677,8 +1717,14 @@ module.exports = (function () {
      * @param {type} errors
      * @returns {Boolean}
      */
-    self.isPropertyValid = function (property, constraints, errors) {
+    self.isPropertyValid = function (property) {
       var is_valid = true;
+
+      var ent = property.__parent
+        , key = property.__name
+        , constraints = ent.constraints.properties[key]
+        , errors      = ent.errors.properties[key]
+        , err_msgs    = null;
 
       // Clear existing property errors
       errors.removeAll();
@@ -1699,19 +1745,19 @@ module.exports = (function () {
 
         // Validate the KO observable property - Pass in the entire sub-entity
         // as it is an object and not a function
-        errors = self.isValid(property, constraints);
+        err_msgs = self.isValid(property, constraints);
       } else {
         // Validate the KO observable property
-        errors = self.isValid(property(), constraints);
+        err_msgs = self.isValid(property(), constraints);
       }
 
       // Add new errors to the error object
-      if (errors.length > 0) {
+      if (err_msgs.length > 0) {
         is_valid = false;
       }
 
-      for (var j in errors) {
-        errors.push(errors[j]);
+      for (var j in err_msgs) {
+        errors.push(err_msgs[j]);
       }
 
       return is_valid;
@@ -1783,7 +1829,7 @@ module.exports = (function () {
 }());
 
 })()
-},{"./constraints/general":9,"./constraints/date":10,"./constraints/string":11,"./constraints/collection":12}],11:[function(require,module,exports){
+},{"./constraints/general":10,"./constraints/date":11,"./constraints/string":12,"./constraints/collection":13}],12:[function(require,module,exports){
 /**
  * All constraints related to strings
  */
@@ -1931,87 +1977,7 @@ module.exports = function (solum) {
 };
 
 })()
-},{"moment":13}],10:[function(require,module,exports){
-var moment = require('moment');
-
-/**
- * Date related constraints
- */
-module.exports = (function () {
-  "use strict";
-  var date         = {};
-
-  /**
-   * Check that the date format is valid
-   *
-   * TODO: Set the date format somewhere else
-   */
-  date.isValid = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.invalid';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      // if date is optional, do not validate with regex
-      if (self.params.is_optional && subject == undefined) {
-         return true;
-      }
-      // Must do a regex check because moment ignores non-numeric characters
-      if (!self.params.format_regex.test(subject)) {
-        throw {error: self.msg};
-      } else if (!moment(subject, self.params.format).isValid()) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Min Date Constraint
-   */
-  date.min = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.min';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      var subj_moment = moment(subject, self.params.format);
-
-      if (subj_moment.diff(self.params.min, 'days') < 0) {
-        throw {error: self.msg, constraint: params.min};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Max Date Constraint
-   */
-  date.max = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.max';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      var subj_moment = moment(subject, self.params.format);
-
-      if (subj_moment.diff(self.params.max, 'days') > 0) {
-        throw {error: self.msg, constraint: params.max};
-      }
-      return true;
-    };
-  };
-
-  return date;
-}());
-
-},{"moment":13}],13:[function(require,module,exports){
+},{"moment":14}],14:[function(require,module,exports){
 (function(){// moment.js
 // version : 2.0.0
 // author : Tim Wood
@@ -3414,7 +3380,7 @@ module.exports = (function () {
 }).call(this);
 
 })()
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 var _ = require('underscore');
 
 /**
@@ -3484,7 +3450,87 @@ module.exports = (function () {
   return general;
 }());
 
-},{"underscore":14}],12:[function(require,module,exports){
+},{"underscore":15}],11:[function(require,module,exports){
+var moment = require('moment');
+
+/**
+ * Date related constraints
+ */
+module.exports = (function () {
+  "use strict";
+  var date         = {};
+
+  /**
+   * Check that the date format is valid
+   *
+   * TODO: Set the date format somewhere else
+   */
+  date.isValid = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.invalid';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      // if date is optional, do not validate with regex
+      if (self.params.is_optional && subject == undefined) {
+         return true;
+      }
+      // Must do a regex check because moment ignores non-numeric characters
+      if (!self.params.format_regex.test(subject)) {
+        throw {error: self.msg};
+      } else if (!moment(subject, self.params.format).isValid()) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Min Date Constraint
+   */
+  date.min = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.min';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      var subj_moment = moment(subject, self.params.format);
+
+      if (subj_moment.diff(self.params.min, 'days') < 0) {
+        throw {error: self.msg, constraint: params.min};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Max Date Constraint
+   */
+  date.max = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.max';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      var subj_moment = moment(subject, self.params.format);
+
+      if (subj_moment.diff(self.params.max, 'days') > 0) {
+        throw {error: self.msg, constraint: params.max};
+      }
+      return true;
+    };
+  };
+
+  return date;
+}());
+
+},{"moment":14}],13:[function(require,module,exports){
 var _ = require('underscore');
 
 /**
@@ -3513,6 +3559,46 @@ module.exports = (function () {
         if (!params.validator.isEntityValid(entities[i])) {
           throw {error: self.msg};
         }
+      }
+
+      return true;
+    };
+  };
+
+  /**
+   * Checks that there are at least the minimum number of members in this collection
+   */
+  collection.minLength = function (params, msg) {
+    var self        = this;
+    self.name       = 'collection.minLength';
+    self.defaultMsg = 'errors.form.collection.minLength';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (entities) {
+      if (entities.length < self.params.min) {
+        throw {error: self.msg};
+      }
+
+      return true;
+    };
+  };
+
+  /**
+   * Checks that there are at least the minimum number of members in this collection
+   */
+  collection.maxLength = function (params, msg) {
+    var self        = this;
+    self.name       = 'collection.maxLength';
+    self.defaultMsg = 'errors.form.collection.maxLength';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (entities) {
+      if (entities.length > self.params.max) {
+        throw {error: self.msg};
       }
 
       return true;
@@ -3554,7 +3640,7 @@ module.exports = (function () {
 }());
 
 
-},{"underscore":14}],14:[function(require,module,exports){
+},{"underscore":15}],15:[function(require,module,exports){
 (function(){//     Underscore.js 1.4.4
 //     http://underscorejs.org
 //     (c) 2009-2013 Jeremy Ashkenas, DocumentCloud Inc.
