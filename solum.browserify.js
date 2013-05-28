@@ -377,7 +377,45 @@ module.exports = solum;
 this.solum = solum;
 
 })()
-},{"./solum/services/ajax":2,"./solum/services/validation":3,"./solum/services/translation":4,"./solum/services/storage":5,"./solum/components/tables":6,"./solum/components/dates":7,"./solum/entities/DateRange":8,"./solum/entities/Primitive":9}],2:[function(require,module,exports){
+},{"./solum/services/ajax":2,"./solum/components/tables":3,"./solum/components/dates":4,"./solum/entities/DateRange":5,"./solum/entities/Primitive":6,"./solum/services/validation":7,"./solum/services/translation":8,"./solum/services/storage":9}],6:[function(require,module,exports){
+/**
+ * Provide a way to turn primitives into solum entities
+ * This allows people to use entity collection functions and validation on primitive
+ * values
+ */
+var Primitive = function Primitive() {
+  var self = this;
+
+  this.properties = {};
+  this.properties.value = ko.observable();
+
+  // Enforced Constraints
+  this.constraints = {};
+  this.constraints.properties = {
+    value: []
+  };
+};
+
+/**
+ * Return a string primitive as the serialization method
+ * @returns string
+ */
+Primitive.prototype.toObject = function () {
+  return this.value();
+};
+
+/**
+ * The AgeDemographics property is a simple array of strings so we need to
+ * serialize from a string primitive and not an object
+ *
+ * @param string value
+ */
+Primitive.prototype.fromObject = function (value) {
+  this.value(value);
+};
+
+module.exports = Primitive;
+},{}],2:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true */
 
 /*
@@ -668,315 +706,161 @@ module.exports = (function () {
 (function(){/*global solum:true, $:true, ko:true, module:true */
 
 /*
- * solum.js - translation
+ * solum.js - date range model
  * author: brandon eum
  * date: Sep 2012
  */
 
 /**
  * Dependencies:
+ *  - Assumes jQuery
  *  - Assumes knockout.js
  *  - Assumes solum.js
  */
 
-/**
- *
- */
-module.exports = (function (root) {
-  "use strict";
-
-  /**
-   * Translation namespace for all objects/functions related to translation
-   */
-  var translation = {};
-
-  /**
-   * Container for all of the translation dictionaries available.
-   */
-  translation.dictionary = {en: {}};
-
-  translation.addDictionary = function (dict) {
-    // This will overwrite existing entries with the new dictionary
-    translation.dictionary = $.extend(true, {}, dict, translation.dictionary);
-  };
-
-  /**
-   * Use the global settings for the localization settings, but set no dictionary
-   * by default.
-   */
-  translation.defaultConfig = {
-    // Use the global locale
-    //locale: root.config.locale,
-    // Use the global date/number format localization
-    //dateNumberLocalization: root.config.dateAndNumberFormatLocalization
-    locale: "en"
-  };
-
-  /**
-   * The mirage translator provides symfony2-style translation based on a dictionary
-   * and date/number localization.
-   */
-  translation.translator = function (config) {
-    var self, locale, dictionary, translations, localized_format;
-
-    // Merge the new config with the default configurations
-    config = $.extend({}, translation.defaultConfig, config);
-
-    self             = this;
-    locale           = config.locale;
-    dictionary       = translation.dictionary;
-    translations     = dictionary[locale];
-    //localized_format = config.dateNumberLocalization[locale];
-
-    /**
-     * Mimics the symfony translator, which will look in the specified dictionary,
-     * find the correct translation based on '.' delimited keys and replace any
-     * wildcards.
-     */
-    self.translate = function (text, replace) {
-      var key, keys, trans, i, j, r, v;
-
-      keys = text.split('.');
-      trans = translations;
-
-      // Loop through the keys and find the proper translation
-      for (j in keys) {
-        if (keys.hasOwnProperty(j)) {
-          if (typeof trans[keys[j]] === 'string' || typeof trans[keys[j]] === 'object') {
-            trans = trans[keys[j]];
-          } else {
-            // Could not find translation, use given text
-            trans = text;
-          }
-        }
-      }
-
-      // Replace wildcards with the appropriate text replacement
-      for (i in replace) {
-        if (replace.hasOwnProperty(i)) {
-          key = '%' + i + '%';
-
-          // Does the text replacement need translation?
-          if (!replace[i].mustTranslate) {
-            trans = trans.replace(key, replace[i]);
-          } else {
-            // Use different translation engines depending on the type
-            r = replace[i];
-            v = r.value;
-            if (r.type === 'date') {
-              v = self.dateToLocalizedString(v);
-            } else if (r.type === 'number') {
-              v = self.numberToLocalizedNumberString(v);
-            } else if (r.type === 'currency') {
-              v = self.numberToLocalizedCurrencyString(v);
-            } else {
-              v = self.translate(v);
-            }
-
-            trans = trans.replace(key, v);
-          }
-        }
-      }
-
-      return trans;
-    };
-
-    /**
-     * Translate a JS date object to a localized date string
-     */
-    self.dateToLocalizedString = function (dateObj) {
-      if (!(dateObj instanceof Date)) {
-        throw "Translator.dateToLocalizedString: tried to translate a non-date object.";
-      }
-
-      return dateObj.toString(localized_format.date.format);
-    };
-
-    self.numberToLocalizedNumberString = function (num) {};
-    self.numberToLocalizedCurrencyString = function (num) {};
-  };// END TRANSLATOR
-
-  return translation;
-}());
-
-})()
-},{}],5:[function(require,module,exports){
-(function(){/*global solum:true, $:true, ko:true, module:true, localStorage:true, sessionStorage:true */
-
-/*
- * solum.js - storage
- * author: brandon eum
- * date: Sep 2012
- */
-
-/**
- * Dependencies:
- *  - Assumes knockout.js
- *  - Assumes solum.js
- */
-
-// Access services library (if needed) through root variable - easier to rename refactor later
 module.exports = (function () {
-  "use strict";
+  // Access services library through root variable - easier to rename refactor later
+
+  // Container for functions for the tables namespace
+  var api  = {};
 
   /**
-   * Storage namespace, currently pertains only to HTML5, but could be other things
-   * in the future
+   * A smart-date object with a label and an associated date range
    */
-  var storage       = {};
-  storage.HTML5 = {};
-
-  /**
-   * Default configurations for the storage manager.
-   */
-  storage.HTML5.defaultConfig = {
-    ttl: 7 * 24 * 60 * 60 * 1000,
-    namespace: "",
-    storage: localStorage // HTML5 storage object
-  };
-
-  /**
-   *
-   */
-  storage.HTML5.manager = function (config) {
-    var
-      MetaDataWrapper,
-      storageApi,
-      ttl,
-      namespace,
-      storage,
-      isStorageAvailable,
-      maxedOut,
-      isMaxedOut,
-      apiAccessor;
-
-    // Merge the new config with the default configurations
-    config = $.extend(config, storage.HTML5.defaultConfig);
+  api.SmartDate = function () {
+    var self = this;
+    self.slug = ko.observable();
+    self.name  = null;
+    self.dates = {
+      start: ko.observable(),
+      end:   ko.observable()
+    };
 
     /**
-     * Sub-object that wraps saved values to capture created time, ttl, and the
-     * value of the object being saved
+     * @param data A JSON representation of this object
      */
-    MetaDataWrapper = function (value, ttl) {
-      var now = new Date();
-
-      this.created = now.getTime();
-      this.ttl     = ttl;
-      this.value   = value;
+    self.fromJSON = function (data) {
+      self.slug(data.slug);
+      self.name = data.name;
+      self.dates.start(data.dates.start);
+      self.dates.end(data.dates.end);
     };
-
-    storageApi = {};
-
-    // Store the Time To Live (TTL) default as 1 week
-    ttl       = config.ttl;
-    namespace = config.namespace;
-    storage   = config.storage;
-
-    // Check if this feature is supported
-    isStorageAvailable = (typeof localStorage === "object" && localStorage !== null);
-    isStorageAvailable = isStorageAvailable && (typeof sessionStorage === "object" && sessionStorage !== null);
-
-    // Prevent saving new items if we are maxed out
-    maxedOut   = false;
-    isMaxedOut = function () { return isMaxedOut; };
-
-    // Store the object in the metadata wrapper and return true upon succesful save
-    storageApi.save = function (key, value) {
-      if (maxedOut) {
-        return false;
-      }
-
-      var w = new MetaDataWrapper(value, ttl);
-      storage[key] = JSON.stringify(w);
-
-      try {
-        w = new MetaDataWrapper(value, ttl);
-        storage[key] = JSON.stringify(w);
-      } catch (e) {
-        // Storage has reached it's limit
-        if (e !== "QUOTA_EXCEEDED_ERR") {
-          throw e;
-        }
-
-        maxedOut = true;
-        return false;
-      }
-
-      return true;
-    };
-
-    // Get the object, check the TTL, and return the value object
-    storageApi.get = function (key) {
-      var
-        badValues,
-        type,
-        o,
-        created,
-        ttl,
-        d;
-
-      badValues = {'null': true, 'undefined': true, 'false': true};
-      type = typeof storage[key];
-      if (type === 'undefined' || badValues[type]) {
-        return null;
-      }
-
-      o = JSON.parse(storage[key]);
-
-      // Check the type of the object
-      created = Number(o.created);
-      ttl     = Number(o.ttl);
-      if (typeof o !== "object" || created === 0 || isNaN(created) || isNaN(ttl)) {
-        return null;
-      }
-
-      // Check if it has exceeded it's time to live'
-      d = new Date();
-      if (d.getTime() -  created > ttl) {
-        storageApi.remove(key);
-        return null;
-      }
-
-      // Unwrap and return the base value
-      return o.value;
-    };
-
-    // Use the storage API to remove the key/clear
-    // Unset the maxed out flag
-    storageApi.remove = function (key) {
-      storage.removeItem(key);
-      maxedOut = false;
-    };
-    storageApi.clear = function () {
-      storage.clear();
-      maxedOut = false;
-    };
-
-    // Return the public API as a single function that does standard feature checks
-    apiAccessor = function (method, key, value) {
-      if (typeof method !== 'string' || typeof storageApi[method] !== 'function') {
-        throw "StorageManager: Method was not a string or does not exist, got type: " + (typeof method);
-      }
-
-      if (!isStorageAvailable) {
-        return false;
-      }
-
-      var nskey = namespace + key;
-
-      return storageApi[method](nskey, value);
-    };
-
-    // Add configuration methods outside the accessor
-    apiAccessor.isMaxedOut = isMaxedOut;
-
-    return apiAccessor;
   };
 
-  return storage;
+  /**
+   * A list of smart dates that can be toggled through to reset the date range
+   *
+   * TODO: Refactor the date range model to use a sub-object for smart dates
+   */
+  api.smartDateMenu = {};
+
+
+  /**
+   * Represents a combination of a smart date menu and range input to have back
+   * and forth communication between the smart date menu and range input.
+   */
+  api.DateRange = function (root) {
+    var self, ignoreDateSubscription;
+
+    self = this;
+
+    self.selectedSmartDate     = ko.observable();
+    self.selectedSmartDateSlug = ko.observable();
+    self.validator             = root.getService('validation', 'validator');
+
+    // TODO: Figure out why we need this
+    self.hasChanged            = false;
+
+    self.dates = new root.constructEntity('DateRange'); // Instantiate a new date entity
+
+    // Smart date options
+    self.smartDates = ko.observableArray([]);
+
+    // Convenience method to add smart date options
+    self.addSmartDates = function (smart_dates) {
+      var i, sd;
+      for (i in smart_dates) {
+        if (smart_dates.hasOwnProperty(i)) {
+          sd = new api.SmartDate();
+          sd.fromJSON(smart_dates[i]);
+          self.smartDates.push(sd);
+        }
+      }
+    };
+
+    /**
+     * Listens for any changes to the selectedSmartDateSlug
+     *   which is the slug value of a SmartDate object.
+     */
+    self.selectedSmartDateSlug.subscribe(function (selectedSlug) {
+      var s, found, i, start, end;
+
+      // get the SmartDate object we are using here
+      s = self.smartDates();
+
+      found = false;
+      for (i in s) {
+        if (s.hasOwnProperty(i) && s[i].slug() === selectedSlug) {
+          self.selectedSmartDate(s[i]);
+          found = true;
+        }
+      }
+
+      // Make sure it was a valid smart date
+      if (found) {
+        // update the dates.start and dates.end properties
+        start = self.selectedSmartDate().dates.start();
+        end   = self.selectedSmartDate().dates.end();
+
+        // Need to avoid recursive calls to the start/end date subscriptions
+        ignoreDateSubscription = true;
+        self.dates.start(start);
+        self.dates.end(end);
+        ignoreDateSubscription = false;
+      }
+    });
+
+    /**
+     * When someone changes the date manually, it changes the date range to custom
+     */
+    ignoreDateSubscription = false;
+
+    self.updateToCustom = function () {
+      var start, end;
+      start = self.dates.start();
+      end   = self.dates.end();
+
+      // Helps the page object determine whether or not to change the page back
+      // to 1
+      self.hasChanged = true;
+      self.validator.isEntityValid(self.dates);
+
+      if (self.selectedSmartDateSlug() !== 'custom' && !ignoreDateSubscription) {
+        self.selectedSmartDateSlug('custom');
+
+        // Will not create an infinite loop because the selectedSmartDateSlug is now 'custom'
+        self.dates.start(start);
+        self.dates.end(end);
+      }
+    };
+
+    self.dates.start.subscribe(self.updateToCustom);
+    self.dates.end.subscribe(self.updateToCustom);
+
+    self.isCustomSelected = ko.computed(function () {
+      return (self.selectedSmartDateSlug() === 'custom');
+    }, this);
+  };
+
+
+  return api;
 }());
+
+
+
+
 })()
-},{}],6:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true */
 
 /*
@@ -1440,203 +1324,319 @@ module.exports = (function () {
 }());
 
 })()
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true */
 
 /*
- * solum.js - date range model
+ * solum.js - translation
  * author: brandon eum
  * date: Sep 2012
  */
 
 /**
  * Dependencies:
- *  - Assumes jQuery
  *  - Assumes knockout.js
  *  - Assumes solum.js
  */
 
-module.exports = (function () {
-  // Access services library through root variable - easier to rename refactor later
-
-  // Container for functions for the tables namespace
-  var api  = {};
+/**
+ *
+ */
+module.exports = (function (root) {
+  "use strict";
 
   /**
-   * A smart-date object with a label and an associated date range
+   * Translation namespace for all objects/functions related to translation
    */
-  api.SmartDate = function () {
-    var self = this;
-    self.slug = ko.observable();
-    self.name  = null;
-    self.dates = {
-      start: ko.observable(),
-      end:   ko.observable()
-    };
+  var translation = {};
 
-    /**
-     * @param data A JSON representation of this object
-     */
-    self.fromJSON = function (data) {
-      self.slug(data.slug);
-      self.name = data.name;
-      self.dates.start(data.dates.start);
-      self.dates.end(data.dates.end);
-    };
+  /**
+   * Container for all of the translation dictionaries available.
+   */
+  translation.dictionary = {en: {}};
+
+  translation.addDictionary = function (dict) {
+    // This will overwrite existing entries with the new dictionary
+    translation.dictionary = $.extend(true, {}, dict, translation.dictionary);
   };
 
   /**
-   * A list of smart dates that can be toggled through to reset the date range
-   *
-   * TODO: Refactor the date range model to use a sub-object for smart dates
+   * Use the global settings for the localization settings, but set no dictionary
+   * by default.
    */
-  api.smartDateMenu = {};
-
-
-  /**
-   * Represents a combination of a smart date menu and range input to have back
-   * and forth communication between the smart date menu and range input.
-   */
-  api.DateRange = function (root) {
-    var self, ignoreDateSubscription;
-
-    self = this;
-
-    self.selectedSmartDate     = ko.observable();
-    self.selectedSmartDateSlug = ko.observable();
-    self.validator             = root.getService('validation', 'validator');
-
-    // TODO: Figure out why we need this
-    self.hasChanged            = false;
-
-    self.dates = new root.constructEntity('DateRange'); // Instantiate a new date entity
-
-    // Smart date options
-    self.smartDates = ko.observableArray([]);
-
-    // Convenience method to add smart date options
-    self.addSmartDates = function (smart_dates) {
-      var i, sd;
-      for (i in smart_dates) {
-        if (smart_dates.hasOwnProperty(i)) {
-          sd = new api.SmartDate();
-          sd.fromJSON(smart_dates[i]);
-          self.smartDates.push(sd);
-        }
-      }
-    };
-
-    /**
-     * Listens for any changes to the selectedSmartDateSlug
-     *   which is the slug value of a SmartDate object.
-     */
-    self.selectedSmartDateSlug.subscribe(function (selectedSlug) {
-      var s, found, i, start, end;
-
-      // get the SmartDate object we are using here
-      s = self.smartDates();
-
-      found = false;
-      for (i in s) {
-        if (s.hasOwnProperty(i) && s[i].slug() === selectedSlug) {
-          self.selectedSmartDate(s[i]);
-          found = true;
-        }
-      }
-
-      // Make sure it was a valid smart date
-      if (found) {
-        // update the dates.start and dates.end properties
-        start = self.selectedSmartDate().dates.start();
-        end   = self.selectedSmartDate().dates.end();
-
-        // Need to avoid recursive calls to the start/end date subscriptions
-        ignoreDateSubscription = true;
-        self.dates.start(start);
-        self.dates.end(end);
-        ignoreDateSubscription = false;
-      }
-    });
-
-    /**
-     * When someone changes the date manually, it changes the date range to custom
-     */
-    ignoreDateSubscription = false;
-
-    self.updateToCustom = function () {
-      var start, end;
-      start = self.dates.start();
-      end   = self.dates.end();
-
-      // Helps the page object determine whether or not to change the page back
-      // to 1
-      self.hasChanged = true;
-      self.validator.isEntityValid(self.dates);
-
-      if (self.selectedSmartDateSlug() !== 'custom' && !ignoreDateSubscription) {
-        self.selectedSmartDateSlug('custom');
-
-        // Will not create an infinite loop because the selectedSmartDateSlug is now 'custom'
-        self.dates.start(start);
-        self.dates.end(end);
-      }
-    };
-
-    self.dates.start.subscribe(self.updateToCustom);
-    self.dates.end.subscribe(self.updateToCustom);
-
-    self.isCustomSelected = ko.computed(function () {
-      return (self.selectedSmartDateSlug() === 'custom');
-    }, this);
+  translation.defaultConfig = {
+    // Use the global locale
+    //locale: root.config.locale,
+    // Use the global date/number format localization
+    //dateNumberLocalization: root.config.dateAndNumberFormatLocalization
+    locale: "en"
   };
 
+  /**
+   * The mirage translator provides symfony2-style translation based on a dictionary
+   * and date/number localization.
+   */
+  translation.translator = function (config) {
+    var self, locale, dictionary, translations, localized_format;
 
-  return api;
+    // Merge the new config with the default configurations
+    config = $.extend({}, translation.defaultConfig, config);
+
+    self             = this;
+    locale           = config.locale;
+    dictionary       = translation.dictionary;
+    translations     = dictionary[locale];
+    //localized_format = config.dateNumberLocalization[locale];
+
+    /**
+     * Mimics the symfony translator, which will look in the specified dictionary,
+     * find the correct translation based on '.' delimited keys and replace any
+     * wildcards.
+     */
+    self.translate = function (text, replace) {
+      var key, keys, trans, i, j, r, v;
+
+      keys = text.split('.');
+      trans = translations;
+
+      // Loop through the keys and find the proper translation
+      for (j in keys) {
+        if (keys.hasOwnProperty(j)) {
+          if (typeof trans[keys[j]] === 'string' || typeof trans[keys[j]] === 'object') {
+            trans = trans[keys[j]];
+          } else {
+            // Could not find translation, use given text
+            trans = text;
+          }
+        }
+      }
+
+      // Replace wildcards with the appropriate text replacement
+      for (i in replace) {
+        if (replace.hasOwnProperty(i)) {
+          key = '%' + i + '%';
+
+          // Does the text replacement need translation?
+          if (!replace[i].mustTranslate) {
+            trans = trans.replace(key, replace[i]);
+          } else {
+            // Use different translation engines depending on the type
+            r = replace[i];
+            v = r.value;
+            if (r.type === 'date') {
+              v = self.dateToLocalizedString(v);
+            } else if (r.type === 'number') {
+              v = self.numberToLocalizedNumberString(v);
+            } else if (r.type === 'currency') {
+              v = self.numberToLocalizedCurrencyString(v);
+            } else {
+              v = self.translate(v);
+            }
+
+            trans = trans.replace(key, v);
+          }
+        }
+      }
+
+      return trans;
+    };
+
+    /**
+     * Translate a JS date object to a localized date string
+     */
+    self.dateToLocalizedString = function (dateObj) {
+      if (!(dateObj instanceof Date)) {
+        throw "Translator.dateToLocalizedString: tried to translate a non-date object.";
+      }
+
+      return dateObj.toString(localized_format.date.format);
+    };
+
+    self.numberToLocalizedNumberString = function (num) {};
+    self.numberToLocalizedCurrencyString = function (num) {};
+  };// END TRANSLATOR
+
+  return translation;
 }());
-
-
-
 
 })()
 },{}],9:[function(require,module,exports){
-/**
- * Provide a way to turn primitives into solum entities
- * This allows people to use entity collection functions and validation on primitive
- * values
+(function(){/*global solum:true, $:true, ko:true, module:true, localStorage:true, sessionStorage:true */
+
+/*
+ * solum.js - storage
+ * author: brandon eum
+ * date: Sep 2012
  */
-var Primitive = function Primitive() {
-  var self = this;
 
-  this.properties = {};
-  this.properties.value = ko.observable();
+/**
+ * Dependencies:
+ *  - Assumes knockout.js
+ *  - Assumes solum.js
+ */
 
-  // Enforced Constraints
-  this.constraints = {};
-  this.constraints.properties = {
-    value: []
+// Access services library (if needed) through root variable - easier to rename refactor later
+module.exports = (function () {
+  "use strict";
+
+  /**
+   * Storage namespace, currently pertains only to HTML5, but could be other things
+   * in the future
+   */
+  var storage       = {};
+  storage.HTML5 = {};
+
+  /**
+   * Default configurations for the storage manager.
+   */
+  storage.HTML5.defaultConfig = {
+    ttl: 7 * 24 * 60 * 60 * 1000,
+    namespace: "",
+    storage: localStorage // HTML5 storage object
   };
-};
 
-/**
- * Return a string primitive as the serialization method
- * @returns string
- */
-Primitive.prototype.toObject = function () {
-  return this.value();
-};
+  /**
+   *
+   */
+  storage.HTML5.manager = function (config) {
+    var
+      MetaDataWrapper,
+      storageApi,
+      ttl,
+      namespace,
+      storage,
+      isStorageAvailable,
+      maxedOut,
+      isMaxedOut,
+      apiAccessor;
 
-/**
- * The AgeDemographics property is a simple array of strings so we need to
- * serialize from a string primitive and not an object
- *
- * @param string value
- */
-Primitive.prototype.fromObject = function (value) {
-  this.value(value);
-};
+    // Merge the new config with the default configurations
+    config = $.extend(config, storage.HTML5.defaultConfig);
 
-module.exports = Primitive;
-},{}],3:[function(require,module,exports){
+    /**
+     * Sub-object that wraps saved values to capture created time, ttl, and the
+     * value of the object being saved
+     */
+    MetaDataWrapper = function (value, ttl) {
+      var now = new Date();
+
+      this.created = now.getTime();
+      this.ttl     = ttl;
+      this.value   = value;
+    };
+
+    storageApi = {};
+
+    // Store the Time To Live (TTL) default as 1 week
+    ttl       = config.ttl;
+    namespace = config.namespace;
+    storage   = config.storage;
+
+    // Check if this feature is supported
+    isStorageAvailable = (typeof localStorage === "object" && localStorage !== null);
+    isStorageAvailable = isStorageAvailable && (typeof sessionStorage === "object" && sessionStorage !== null);
+
+    // Prevent saving new items if we are maxed out
+    maxedOut   = false;
+    isMaxedOut = function () { return isMaxedOut; };
+
+    // Store the object in the metadata wrapper and return true upon succesful save
+    storageApi.save = function (key, value) {
+      if (maxedOut) {
+        return false;
+      }
+
+      var w = new MetaDataWrapper(value, ttl);
+      storage[key] = JSON.stringify(w);
+
+      try {
+        w = new MetaDataWrapper(value, ttl);
+        storage[key] = JSON.stringify(w);
+      } catch (e) {
+        // Storage has reached it's limit
+        if (e !== "QUOTA_EXCEEDED_ERR") {
+          throw e;
+        }
+
+        maxedOut = true;
+        return false;
+      }
+
+      return true;
+    };
+
+    // Get the object, check the TTL, and return the value object
+    storageApi.get = function (key) {
+      var
+        badValues,
+        type,
+        o,
+        created,
+        ttl,
+        d;
+
+      badValues = {'null': true, 'undefined': true, 'false': true};
+      type = typeof storage[key];
+      if (type === 'undefined' || badValues[type]) {
+        return null;
+      }
+
+      o = JSON.parse(storage[key]);
+
+      // Check the type of the object
+      created = Number(o.created);
+      ttl     = Number(o.ttl);
+      if (typeof o !== "object" || created === 0 || isNaN(created) || isNaN(ttl)) {
+        return null;
+      }
+
+      // Check if it has exceeded it's time to live'
+      d = new Date();
+      if (d.getTime() -  created > ttl) {
+        storageApi.remove(key);
+        return null;
+      }
+
+      // Unwrap and return the base value
+      return o.value;
+    };
+
+    // Use the storage API to remove the key/clear
+    // Unset the maxed out flag
+    storageApi.remove = function (key) {
+      storage.removeItem(key);
+      maxedOut = false;
+    };
+    storageApi.clear = function () {
+      storage.clear();
+      maxedOut = false;
+    };
+
+    // Return the public API as a single function that does standard feature checks
+    apiAccessor = function (method, key, value) {
+      if (typeof method !== 'string' || typeof storageApi[method] !== 'function') {
+        throw "StorageManager: Method was not a string or does not exist, got type: " + (typeof method);
+      }
+
+      if (!isStorageAvailable) {
+        return false;
+      }
+
+      var nskey = namespace + key;
+
+      return storageApi[method](nskey, value);
+    };
+
+    // Add configuration methods outside the accessor
+    apiAccessor.isMaxedOut = isMaxedOut;
+
+    return apiAccessor;
+  };
+
+  return storage;
+}());
+})()
+},{}],7:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true */
 
 /*
@@ -1746,6 +1746,18 @@ module.exports = (function () {
         // Validate the KO observable property - Pass in the entire sub-entity
         // as it is an object and not a function
         err_msgs = self.isValid(property, constraints);
+
+      // Validate each item if it is an entity collection
+      } else if (property.is_entity_collection) {
+        var collection = property(), curr_msgs, is_current_valid;
+
+        for (var i in collection) {
+          is_current_valid = self.isEntityValid(collection[i]);
+          is_valid = is_valid && is_current_valid;
+        }
+
+        // Validate the KO observable property
+        err_msgs = self.isValid(property(), constraints);
       } else {
         // Validate the KO observable property
         err_msgs = self.isValid(property(), constraints);
@@ -1859,6 +1871,10 @@ module.exports = (function () {
     self.params     = params;
 
     this.test = function (subject) {
+      if (self.params.is_optional && !subject) {
+        return true;
+      }
+
       if (subject.length > self.params.max) {
         throw {error: self.msg};
       }
@@ -1873,17 +1889,21 @@ module.exports = (function () {
     self.params     = params;
 
     this.test = function (subject) {
+      if (self.params.is_optional && !subject) {
+        return true;
+      }
+
       if (!self.params.regex.test(subject)) {
         throw {error: self.msg};
       }
       return true;
     };
   };
-  
+
   return string;
 }());
 
-},{}],8:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true */
 
 var moment = require('moment');
@@ -3380,77 +3400,7 @@ module.exports = function (solum) {
 }).call(this);
 
 })()
-},{}],10:[function(require,module,exports){
-var _ = require('underscore');
-
-/**
- * Constraints for any type of subject
- */
-module.exports = (function () {
-  "use strict";
-
-  var general = {};
-
-  /**
-   * Validates that the field is not null or undefined
-   */
-  general.notNull = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.notNull'
-    self.defaultMsg = 'errors.form.general.not_null';
-    self.msg        = (msg) ? msg : self.defaultMsg;
-    self.params     = params;
-
-    self.test = function (subject) {
-      if (subject === '' || subject === null || subject === undefined) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Checks the type of the subject using the typeof operator
-   */
-  general.type = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.type';
-    self.defaultMsg = 'errors.form.general.type';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (subject) {
-      if ((self.params.type === "null" && subject !== null) || typeof subject !== self.params.type) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Ensures the subject is one of the given choices
-   */
-  general.choice = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.choice';
-    self.defaultMsg = 'errors.form.general.type';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (subject) {;
-      if (_.indexOf(self.params.choices, subject) === -1) {
-        throw {error: msg};
-      }
-      return true;
-    };
-  };
-
-  return general;
-}());
-
-},{"underscore":15}],11:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 var moment = require('moment');
 
 /**
@@ -3530,7 +3480,77 @@ module.exports = (function () {
   return date;
 }());
 
-},{"moment":14}],13:[function(require,module,exports){
+},{"moment":14}],10:[function(require,module,exports){
+var _ = require('underscore');
+
+/**
+ * Constraints for any type of subject
+ */
+module.exports = (function () {
+  "use strict";
+
+  var general = {};
+
+  /**
+   * Validates that the field is not null or undefined
+   */
+  general.notNull = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.notNull'
+    self.defaultMsg = 'errors.form.general.not_null';
+    self.msg        = (msg) ? msg : self.defaultMsg;
+    self.params     = params;
+
+    self.test = function (subject) {
+      if (subject === '' || subject === null || subject === undefined) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Checks the type of the subject using the typeof operator
+   */
+  general.type = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.type';
+    self.defaultMsg = 'errors.form.general.type';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (subject) {
+      if ((self.params.type === "null" && subject !== null) || typeof subject !== self.params.type) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Ensures the subject is one of the given choices
+   */
+  general.choice = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.choice';
+    self.defaultMsg = 'errors.form.general.type';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (subject) {;
+      if (_.indexOf(self.params.choices, subject) === -1) {
+        throw {error: msg};
+      }
+      return true;
+    };
+  };
+
+  return general;
+}());
+
+},{"underscore":15}],13:[function(require,module,exports){
 var _ = require('underscore');
 
 /**
