@@ -667,6 +667,318 @@ module.exports = (function () {
 }());
 
 })()
+},{}],4:[function(require,module,exports){
+(function(){/*global solum:true, $:true, ko:true, module:true */
+
+/*
+ * solum.js - translation
+ * author: brandon eum
+ * date: Sep 2012
+ */
+
+/**
+ * Dependencies:
+ *  - Assumes knockout.js
+ *  - Assumes solum.js
+ */
+
+/**
+ *
+ */
+module.exports = (function (root) {
+  "use strict";
+
+  /**
+   * Translation namespace for all objects/functions related to translation
+   */
+  var translation = {};
+
+  /**
+   * Container for all of the translation dictionaries available.
+   */
+  translation.dictionary = {en: {}};
+
+  translation.addDictionary = function (dict) {
+    // This will overwrite existing entries with the new dictionary
+    translation.dictionary = $.extend(true, {}, dict, translation.dictionary);
+  };
+
+  /**
+   * Use the global settings for the localization settings, but set no dictionary
+   * by default.
+   */
+  translation.defaultConfig = {
+    // Use the global locale
+    //locale: root.config.locale,
+    // Use the global date/number format localization
+    //dateNumberLocalization: root.config.dateAndNumberFormatLocalization
+    locale: "en"
+  };
+
+  /**
+   * The mirage translator provides symfony2-style translation based on a dictionary
+   * and date/number localization.
+   */
+  translation.translator = function (config) {
+    var self, locale, dictionary, translations, localized_format;
+
+    // Merge the new config with the default configurations
+    config = $.extend({}, translation.defaultConfig, config);
+
+    self             = this;
+    locale           = config.locale;
+    dictionary       = translation.dictionary;
+    translations     = dictionary[locale];
+    //localized_format = config.dateNumberLocalization[locale];
+
+    /**
+     * Mimics the symfony translator, which will look in the specified dictionary,
+     * find the correct translation based on '.' delimited keys and replace any
+     * wildcards.
+     */
+    self.translate = function (text, replace) {
+      var key, keys, trans, i, j, r, v;
+
+      keys = text.split('.');
+      trans = translations;
+
+      // Loop through the keys and find the proper translation
+      for (j in keys) {
+        if (keys.hasOwnProperty(j)) {
+          if (typeof trans[keys[j]] === 'string' || typeof trans[keys[j]] === 'object') {
+            trans = trans[keys[j]];
+          } else {
+            // Could not find translation, use given text
+            trans = text;
+          }
+        }
+      }
+
+      // Replace wildcards with the appropriate text replacement
+      for (i in replace) {
+        if (replace.hasOwnProperty(i)) {
+          key = '%' + i + '%';
+
+          // Does the text replacement need translation?
+          if (!replace[i].mustTranslate) {
+            trans = trans.replace(key, replace[i]);
+          } else {
+            // Use different translation engines depending on the type
+            r = replace[i];
+            v = r.value;
+            if (r.type === 'date') {
+              v = self.dateToLocalizedString(v);
+            } else if (r.type === 'number') {
+              v = self.numberToLocalizedNumberString(v);
+            } else if (r.type === 'currency') {
+              v = self.numberToLocalizedCurrencyString(v);
+            } else {
+              v = self.translate(v);
+            }
+
+            trans = trans.replace(key, v);
+          }
+        }
+      }
+
+      return trans;
+    };
+
+    /**
+     * Translate a JS date object to a localized date string
+     */
+    self.dateToLocalizedString = function (dateObj) {
+      if (!(dateObj instanceof Date)) {
+        throw "Translator.dateToLocalizedString: tried to translate a non-date object.";
+      }
+
+      return dateObj.toString(localized_format.date.format);
+    };
+
+    self.numberToLocalizedNumberString = function (num) {};
+    self.numberToLocalizedCurrencyString = function (num) {};
+  };// END TRANSLATOR
+
+  return translation;
+}());
+
+})()
+},{}],5:[function(require,module,exports){
+(function(){/*global solum:true, $:true, ko:true, module:true, localStorage:true, sessionStorage:true */
+
+/*
+ * solum.js - storage
+ * author: brandon eum
+ * date: Sep 2012
+ */
+
+/**
+ * Dependencies:
+ *  - Assumes knockout.js
+ *  - Assumes solum.js
+ */
+
+// Access services library (if needed) through root variable - easier to rename refactor later
+module.exports = (function () {
+  "use strict";
+
+  /**
+   * Storage namespace, currently pertains only to HTML5, but could be other things
+   * in the future
+   */
+  var storage       = {};
+  storage.HTML5 = {};
+
+  /**
+   * Default configurations for the storage manager.
+   */
+  storage.HTML5.defaultConfig = {
+    ttl: 7 * 24 * 60 * 60 * 1000,
+    namespace: "",
+    storage: localStorage // HTML5 storage object
+  };
+
+  /**
+   *
+   */
+  storage.HTML5.manager = function (config) {
+    var
+      MetaDataWrapper,
+      storageApi,
+      ttl,
+      namespace,
+      storage,
+      isStorageAvailable,
+      maxedOut,
+      isMaxedOut,
+      apiAccessor;
+
+    // Merge the new config with the default configurations
+    config = $.extend(config, storage.HTML5.defaultConfig);
+
+    /**
+     * Sub-object that wraps saved values to capture created time, ttl, and the
+     * value of the object being saved
+     */
+    MetaDataWrapper = function (value, ttl) {
+      var now = new Date();
+
+      this.created = now.getTime();
+      this.ttl     = ttl;
+      this.value   = value;
+    };
+
+    storageApi = {};
+
+    // Store the Time To Live (TTL) default as 1 week
+    ttl       = config.ttl;
+    namespace = config.namespace;
+    storage   = config.storage;
+
+    // Check if this feature is supported
+    isStorageAvailable = (typeof localStorage === "object" && localStorage !== null);
+    isStorageAvailable = isStorageAvailable && (typeof sessionStorage === "object" && sessionStorage !== null);
+
+    // Prevent saving new items if we are maxed out
+    maxedOut   = false;
+    isMaxedOut = function () { return isMaxedOut; };
+
+    // Store the object in the metadata wrapper and return true upon succesful save
+    storageApi.save = function (key, value) {
+      if (maxedOut) {
+        return false;
+      }
+
+      var w = new MetaDataWrapper(value, ttl);
+      storage[key] = JSON.stringify(w);
+
+      try {
+        w = new MetaDataWrapper(value, ttl);
+        storage[key] = JSON.stringify(w);
+      } catch (e) {
+        // Storage has reached it's limit
+        if (e !== "QUOTA_EXCEEDED_ERR") {
+          throw e;
+        }
+
+        maxedOut = true;
+        return false;
+      }
+
+      return true;
+    };
+
+    // Get the object, check the TTL, and return the value object
+    storageApi.get = function (key) {
+      var
+        badValues,
+        type,
+        o,
+        created,
+        ttl,
+        d;
+
+      badValues = {'null': true, 'undefined': true, 'false': true};
+      type = typeof storage[key];
+      if (type === 'undefined' || badValues[type]) {
+        return null;
+      }
+
+      o = JSON.parse(storage[key]);
+
+      // Check the type of the object
+      created = Number(o.created);
+      ttl     = Number(o.ttl);
+      if (typeof o !== "object" || created === 0 || isNaN(created) || isNaN(ttl)) {
+        return null;
+      }
+
+      // Check if it has exceeded it's time to live'
+      d = new Date();
+      if (d.getTime() -  created > ttl) {
+        storageApi.remove(key);
+        return null;
+      }
+
+      // Unwrap and return the base value
+      return o.value;
+    };
+
+    // Use the storage API to remove the key/clear
+    // Unset the maxed out flag
+    storageApi.remove = function (key) {
+      storage.removeItem(key);
+      maxedOut = false;
+    };
+    storageApi.clear = function () {
+      storage.clear();
+      maxedOut = false;
+    };
+
+    // Return the public API as a single function that does standard feature checks
+    apiAccessor = function (method, key, value) {
+      if (typeof method !== 'string' || typeof storageApi[method] !== 'function') {
+        throw "StorageManager: Method was not a string or does not exist, got type: " + (typeof method);
+      }
+
+      if (!isStorageAvailable) {
+        return false;
+      }
+
+      var nskey = namespace + key;
+
+      return storageApi[method](nskey, value);
+    };
+
+    // Add configuration methods outside the accessor
+    apiAccessor.isMaxedOut = isMaxedOut;
+
+    return apiAccessor;
+  };
+
+  return storage;
+}());
+})()
 },{}],6:[function(require,module,exports){
 (function(){/*global solum:true, $:true, ko:true, module:true */
 
@@ -1289,318 +1601,6 @@ module.exports = (function () {
 
 
 })()
-},{}],5:[function(require,module,exports){
-(function(){/*global solum:true, $:true, ko:true, module:true, localStorage:true, sessionStorage:true */
-
-/*
- * solum.js - storage
- * author: brandon eum
- * date: Sep 2012
- */
-
-/**
- * Dependencies:
- *  - Assumes knockout.js
- *  - Assumes solum.js
- */
-
-// Access services library (if needed) through root variable - easier to rename refactor later
-module.exports = (function () {
-  "use strict";
-
-  /**
-   * Storage namespace, currently pertains only to HTML5, but could be other things
-   * in the future
-   */
-  var storage       = {};
-  storage.HTML5 = {};
-
-  /**
-   * Default configurations for the storage manager.
-   */
-  storage.HTML5.defaultConfig = {
-    ttl: 7 * 24 * 60 * 60 * 1000,
-    namespace: "",
-    storage: localStorage // HTML5 storage object
-  };
-
-  /**
-   *
-   */
-  storage.HTML5.manager = function (config) {
-    var
-      MetaDataWrapper,
-      storageApi,
-      ttl,
-      namespace,
-      storage,
-      isStorageAvailable,
-      maxedOut,
-      isMaxedOut,
-      apiAccessor;
-
-    // Merge the new config with the default configurations
-    config = $.extend(config, storage.HTML5.defaultConfig);
-
-    /**
-     * Sub-object that wraps saved values to capture created time, ttl, and the
-     * value of the object being saved
-     */
-    MetaDataWrapper = function (value, ttl) {
-      var now = new Date();
-
-      this.created = now.getTime();
-      this.ttl     = ttl;
-      this.value   = value;
-    };
-
-    storageApi = {};
-
-    // Store the Time To Live (TTL) default as 1 week
-    ttl       = config.ttl;
-    namespace = config.namespace;
-    storage   = config.storage;
-
-    // Check if this feature is supported
-    isStorageAvailable = (typeof localStorage === "object" && localStorage !== null);
-    isStorageAvailable = isStorageAvailable && (typeof sessionStorage === "object" && sessionStorage !== null);
-
-    // Prevent saving new items if we are maxed out
-    maxedOut   = false;
-    isMaxedOut = function () { return isMaxedOut; };
-
-    // Store the object in the metadata wrapper and return true upon succesful save
-    storageApi.save = function (key, value) {
-      if (maxedOut) {
-        return false;
-      }
-
-      var w = new MetaDataWrapper(value, ttl);
-      storage[key] = JSON.stringify(w);
-
-      try {
-        w = new MetaDataWrapper(value, ttl);
-        storage[key] = JSON.stringify(w);
-      } catch (e) {
-        // Storage has reached it's limit
-        if (e !== "QUOTA_EXCEEDED_ERR") {
-          throw e;
-        }
-
-        maxedOut = true;
-        return false;
-      }
-
-      return true;
-    };
-
-    // Get the object, check the TTL, and return the value object
-    storageApi.get = function (key) {
-      var
-        badValues,
-        type,
-        o,
-        created,
-        ttl,
-        d;
-
-      badValues = {'null': true, 'undefined': true, 'false': true};
-      type = typeof storage[key];
-      if (type === 'undefined' || badValues[type]) {
-        return null;
-      }
-
-      o = JSON.parse(storage[key]);
-
-      // Check the type of the object
-      created = Number(o.created);
-      ttl     = Number(o.ttl);
-      if (typeof o !== "object" || created === 0 || isNaN(created) || isNaN(ttl)) {
-        return null;
-      }
-
-      // Check if it has exceeded it's time to live'
-      d = new Date();
-      if (d.getTime() -  created > ttl) {
-        storageApi.remove(key);
-        return null;
-      }
-
-      // Unwrap and return the base value
-      return o.value;
-    };
-
-    // Use the storage API to remove the key/clear
-    // Unset the maxed out flag
-    storageApi.remove = function (key) {
-      storage.removeItem(key);
-      maxedOut = false;
-    };
-    storageApi.clear = function () {
-      storage.clear();
-      maxedOut = false;
-    };
-
-    // Return the public API as a single function that does standard feature checks
-    apiAccessor = function (method, key, value) {
-      if (typeof method !== 'string' || typeof storageApi[method] !== 'function') {
-        throw "StorageManager: Method was not a string or does not exist, got type: " + (typeof method);
-      }
-
-      if (!isStorageAvailable) {
-        return false;
-      }
-
-      var nskey = namespace + key;
-
-      return storageApi[method](nskey, value);
-    };
-
-    // Add configuration methods outside the accessor
-    apiAccessor.isMaxedOut = isMaxedOut;
-
-    return apiAccessor;
-  };
-
-  return storage;
-}());
-})()
-},{}],4:[function(require,module,exports){
-(function(){/*global solum:true, $:true, ko:true, module:true */
-
-/*
- * solum.js - translation
- * author: brandon eum
- * date: Sep 2012
- */
-
-/**
- * Dependencies:
- *  - Assumes knockout.js
- *  - Assumes solum.js
- */
-
-/**
- *
- */
-module.exports = (function (root) {
-  "use strict";
-
-  /**
-   * Translation namespace for all objects/functions related to translation
-   */
-  var translation = {};
-
-  /**
-   * Container for all of the translation dictionaries available.
-   */
-  translation.dictionary = {en: {}};
-
-  translation.addDictionary = function (dict) {
-    // This will overwrite existing entries with the new dictionary
-    translation.dictionary = $.extend(true, {}, dict, translation.dictionary);
-  };
-
-  /**
-   * Use the global settings for the localization settings, but set no dictionary
-   * by default.
-   */
-  translation.defaultConfig = {
-    // Use the global locale
-    //locale: root.config.locale,
-    // Use the global date/number format localization
-    //dateNumberLocalization: root.config.dateAndNumberFormatLocalization
-    locale: "en"
-  };
-
-  /**
-   * The mirage translator provides symfony2-style translation based on a dictionary
-   * and date/number localization.
-   */
-  translation.translator = function (config) {
-    var self, locale, dictionary, translations, localized_format;
-
-    // Merge the new config with the default configurations
-    config = $.extend({}, translation.defaultConfig, config);
-
-    self             = this;
-    locale           = config.locale;
-    dictionary       = translation.dictionary;
-    translations     = dictionary[locale];
-    //localized_format = config.dateNumberLocalization[locale];
-
-    /**
-     * Mimics the symfony translator, which will look in the specified dictionary,
-     * find the correct translation based on '.' delimited keys and replace any
-     * wildcards.
-     */
-    self.translate = function (text, replace) {
-      var key, keys, trans, i, j, r, v;
-
-      keys = text.split('.');
-      trans = translations;
-
-      // Loop through the keys and find the proper translation
-      for (j in keys) {
-        if (keys.hasOwnProperty(j)) {
-          if (typeof trans[keys[j]] === 'string' || typeof trans[keys[j]] === 'object') {
-            trans = trans[keys[j]];
-          } else {
-            // Could not find translation, use given text
-            trans = text;
-          }
-        }
-      }
-
-      // Replace wildcards with the appropriate text replacement
-      for (i in replace) {
-        if (replace.hasOwnProperty(i)) {
-          key = '%' + i + '%';
-
-          // Does the text replacement need translation?
-          if (!replace[i].mustTranslate) {
-            trans = trans.replace(key, replace[i]);
-          } else {
-            // Use different translation engines depending on the type
-            r = replace[i];
-            v = r.value;
-            if (r.type === 'date') {
-              v = self.dateToLocalizedString(v);
-            } else if (r.type === 'number') {
-              v = self.numberToLocalizedNumberString(v);
-            } else if (r.type === 'currency') {
-              v = self.numberToLocalizedCurrencyString(v);
-            } else {
-              v = self.translate(v);
-            }
-
-            trans = trans.replace(key, v);
-          }
-        }
-      }
-
-      return trans;
-    };
-
-    /**
-     * Translate a JS date object to a localized date string
-     */
-    self.dateToLocalizedString = function (dateObj) {
-      if (!(dateObj instanceof Date)) {
-        throw "Translator.dateToLocalizedString: tried to translate a non-date object.";
-      }
-
-      return dateObj.toString(localized_format.date.format);
-    };
-
-    self.numberToLocalizedNumberString = function (num) {};
-    self.numberToLocalizedCurrencyString = function (num) {};
-  };// END TRANSLATOR
-
-  return translation;
-}());
-
-})()
 },{}],9:[function(require,module,exports){
 /**
  * Provide a way to turn primitives into solum entities
@@ -1720,7 +1720,7 @@ module.exports = (function () {
      * @param {type} errors
      * @returns {Boolean}
      */
-    self.isPropertyValid = function (property) {
+    self.isPropertyValid = function (property, ignore_subentities) {
       var is_valid = true;
 
       var ent = property.__parent
@@ -1735,7 +1735,7 @@ module.exports = (function () {
       // Check if the property is a sub-entity, if yes, recursively validate, if not
       // validate the property
       if (property.is_entity) {
-        var are_sub_entities_valid = self.isEntityValid(property);
+        var are_sub_entities_valid = (ignore_subentities) ? true : self.isEntityValid(property);
 
         // Add the error to the sub-entity's errors array
         // Note: If there is an error the view should be directly connected to
@@ -1754,9 +1754,11 @@ module.exports = (function () {
       } else if (property.is_entity_collection) {
         var collection = property(), curr_msgs, is_current_valid;
 
-        for (var i in collection) {
-          is_current_valid = self.isEntityValid(collection[i]);
-          is_valid = is_valid && is_current_valid;
+        if (!ignore_subentities) {
+          for (var i in collection) {
+            is_current_valid = self.isEntityValid(collection[i]);
+            is_valid = is_valid && is_current_valid;
+          }
         }
 
         // Validate the KO observable property
@@ -1819,7 +1821,7 @@ module.exports = (function () {
   validation.constraints.constructConstraint = function (group, name, params, msg) {
     var constraints = validation.constraints;
     if (!constraints[group] || !constraints[group][name]) {
-      throw "ConstructConstraint: Constraint not found.";
+      throw "ConstructConstraint: Constraint not found : " + name;
     }
 
     return new validation.constraints[group][name](params, msg);
@@ -2000,286 +2002,7 @@ module.exports = function (solum) {
 };
 
 })()
-},{"moment":14}],11:[function(require,module,exports){
-var moment = require('moment');
-
-/**
- * Date related constraints
- */
-module.exports = (function () {
-  "use strict";
-  var date         = {};
-
-  /**
-   * Check that the date format is valid
-   *
-   * TODO: Set the date format somewhere else
-   */
-  date.isValid = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.invalid';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      // if date is optional, do not validate with regex
-      if (self.params.is_optional && !subject) {
-         return true;
-      }
-      // Must do a regex check because moment ignores non-numeric characters
-      if (!self.params.format_regex.test(subject)) {
-        throw {error: self.msg};
-      } else if (!moment(subject, self.params.format).isValid()) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Min Date Constraint
-   */
-  date.min = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.min';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      var subj_moment = moment(subject, self.params.format);
-
-      if (subj_moment.diff(self.params.min, 'days') < 0) {
-        throw {error: self.msg, constraint: params.min};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Max Date Constraint
-   */
-  date.max = function (params, msg) {
-    var self            = this;
-    self.continueOnFail = false;
-    self.defaultMsg     = 'errors.form.date.max';
-    self.msg            = (msg) ? msg : self.defaultMsg;
-    self.params         = params;
-
-    self.test = function (subject) {
-      var subj_moment = moment(subject, self.params.format);
-
-      if (subj_moment.diff(self.params.max, 'days') > 0) {
-        throw {error: self.msg, constraint: params.max};
-      }
-      return true;
-    };
-  };
-
-  return date;
-}());
-
-},{"moment":14}],10:[function(require,module,exports){
-var _ = require('underscore');
-
-/**
- * Constraints for any type of subject
- */
-module.exports = (function () {
-  "use strict";
-
-  var general = {};
-
-  /**
-   * Validates that the field is not null or undefined
-   */
-  general.notNull = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.notNull'
-    self.defaultMsg = 'errors.form.general.not_null';
-    self.msg        = (msg) ? msg : self.defaultMsg;
-    self.params     = params;
-
-    self.test = function (subject) {
-      if (subject === '' || subject === null || subject === undefined) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Validates that the field is equal to some specific value
-   */ 
-  general.equals = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.notNull'
-    self.defaultMsg = 'errors.form.general.not_null';
-    self.msg        = (msg) ? msg : self.defaultMsg;
-    self.params     = params;
-
-    self.test = function (subject) {
-      if (subject !== self.params.value) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-
-  /**
-   * Checks the type of the subject using the typeof operator
-   */
-  general.type = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.type';
-    self.defaultMsg = 'errors.form.general.type';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (subject) {
-      if ((self.params.type === "null" && subject !== null) || typeof subject !== self.params.type) {
-        throw {error: self.msg};
-      }
-      return true;
-    };
-  };
-
-  /**
-   * Ensures the subject is one of the given choices
-   */
-  general.choice = function (params, msg) {
-    var self        = this;
-    self.name       = 'general.choice';
-    self.defaultMsg = 'errors.form.general.type';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (subject) {;
-      if (_.indexOf(self.params.choices, subject) === -1) {
-        throw {error: msg};
-      }
-      return true;
-    };
-  };
-
-  return general;
-}());
-
-},{"underscore":15}],13:[function(require,module,exports){
-var _ = require('underscore');
-
-/**
- * Methods for validating a collection of solum entities
- */
-module.exports = (function () {
-  "use strict";
-
-  var collection = {};
-
-  /**
-   * Loops through a KO observable array of entities and validates each of them
-   */
-  collection.validate = function (params, msg) {
-    var self        = this;
-    self.name       = 'collection.validate';
-    self.defaultMsg = 'errors.form.collection.validate';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (entities) {
-      var i;
-
-      for (i in entities) {
-        if (!params.validator.isEntityValid(entities[i])) {
-          throw {error: self.msg};
-        }
-      }
-
-      return true;
-    };
-  };
-
-  /**
-   * Checks that there are at least the minimum number of members in this collection
-   */
-  collection.minLength = function (params, msg) {
-    var self        = this;
-    self.name       = 'collection.minLength';
-    self.defaultMsg = 'errors.form.collection.minLength';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (entities) {
-      if (entities.length < self.params.min) {
-        throw {error: self.msg};
-      }
-
-      return true;
-    };
-  };
-
-  /**
-   * Checks that there are at least the minimum number of members in this collection
-   */
-  collection.maxLength = function (params, msg) {
-    var self        = this;
-    self.name       = 'collection.maxLength';
-    self.defaultMsg = 'errors.form.collection.maxLength';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (entities) {
-      if (entities.length > self.params.max) {
-        throw {error: self.msg};
-      }
-
-      return true;
-    };
-  };
-
-  /**
-   * Checks the uniqueness of a specific property across a collection of entities
-   */
-  collection.unique = function (params, msg) {
-    var self        = this;
-    self.name       = 'collection.unique';
-    self.defaultMsg = 'errors.form.collection.unique';
-    msg             = (msg) ? msg : self.defaultMsg;
-    self.msg        = msg;
-    self.params     = params;
-
-    self.test = function (entities) {
-      var values, unique_values
-        , property = self.params.property;
-
-      // Map the array of entities to flatten to a list of values
-      values = _.map(entities, function (value, key, list) {
-        return value[property]();
-      });
-
-      unique_values = _.uniq(values);
-
-      if (values.length !== unique_values.length) {
-        throw {error: self.msg};
-      }
-
-      return true;
-    };
-  };
-
-
-  return collection;
-}());
-
-
-},{"underscore":15}],14:[function(require,module,exports){
+},{"moment":14}],14:[function(require,module,exports){
 (function(){// moment.js
 // version : 2.0.0
 // author : Tim Wood
@@ -3682,7 +3405,286 @@ module.exports = (function () {
 }).call(this);
 
 })()
-},{}],15:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
+var _ = require('underscore');
+
+/**
+ * Constraints for any type of subject
+ */
+module.exports = (function () {
+  "use strict";
+
+  var general = {};
+
+  /**
+   * Validates that the field is not null or undefined
+   */
+  general.notNull = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.notNull'
+    self.defaultMsg = 'errors.form.general.not_null';
+    self.msg        = (msg) ? msg : self.defaultMsg;
+    self.params     = params;
+
+    self.test = function (subject) {
+      if (subject === '' || subject === null || subject === undefined) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Validates that the field is equal to some specific value
+   */ 
+  general.equals = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.notNull'
+    self.defaultMsg = 'errors.form.general.not_null';
+    self.msg        = (msg) ? msg : self.defaultMsg;
+    self.params     = params;
+
+    self.test = function (subject) {
+      if (subject !== self.params.value) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+
+  /**
+   * Checks the type of the subject using the typeof operator
+   */
+  general.type = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.type';
+    self.defaultMsg = 'errors.form.general.type';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (subject) {
+      if ((self.params.type === "null" && subject !== null) || typeof subject !== self.params.type) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Ensures the subject is one of the given choices
+   */
+  general.choice = function (params, msg) {
+    var self        = this;
+    self.name       = 'general.choice';
+    self.defaultMsg = 'errors.form.general.type';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (subject) {;
+      if (_.indexOf(self.params.choices, subject) === -1) {
+        throw {error: msg};
+      }
+      return true;
+    };
+  };
+
+  return general;
+}());
+
+},{"underscore":15}],11:[function(require,module,exports){
+var moment = require('moment');
+
+/**
+ * Date related constraints
+ */
+module.exports = (function () {
+  "use strict";
+  var date         = {};
+
+  /**
+   * Check that the date format is valid
+   *
+   * TODO: Set the date format somewhere else
+   */
+  date.isValid = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.invalid';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      // if date is optional, do not validate with regex
+      if (self.params.is_optional && !subject) {
+         return true;
+      }
+      // Must do a regex check because moment ignores non-numeric characters
+      if (!self.params.format_regex.test(subject)) {
+        throw {error: self.msg};
+      } else if (!moment(subject, self.params.format).isValid()) {
+        throw {error: self.msg};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Min Date Constraint
+   */
+  date.min = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.min';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      var subj_moment = moment(subject, self.params.format);
+
+      if (subj_moment.diff(self.params.min, 'days') < 0) {
+        throw {error: self.msg, constraint: params.min};
+      }
+      return true;
+    };
+  };
+
+  /**
+   * Max Date Constraint
+   */
+  date.max = function (params, msg) {
+    var self            = this;
+    self.continueOnFail = false;
+    self.defaultMsg     = 'errors.form.date.max';
+    self.msg            = (msg) ? msg : self.defaultMsg;
+    self.params         = params;
+
+    self.test = function (subject) {
+      var subj_moment = moment(subject, self.params.format);
+
+      if (subj_moment.diff(self.params.max, 'days') > 0) {
+        throw {error: self.msg, constraint: params.max};
+      }
+      return true;
+    };
+  };
+
+  return date;
+}());
+
+},{"moment":14}],13:[function(require,module,exports){
+var _ = require('underscore');
+
+/**
+ * Methods for validating a collection of solum entities
+ */
+module.exports = (function () {
+  "use strict";
+
+  var collection = {};
+
+  /**
+   * Loops through a KO observable array of entities and validates each of them
+   */
+  collection.validate = function (params, msg) {
+    var self        = this;
+    self.name       = 'collection.validate';
+    self.defaultMsg = 'errors.form.collection.validate';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (entities) {
+      var i;
+
+      for (i in entities) {
+        if (!params.validator.isEntityValid(entities[i])) {
+          throw {error: self.msg};
+        }
+      }
+
+      return true;
+    };
+  };
+
+  /**
+   * Checks that there are at least the minimum number of members in this collection
+   */
+  collection.minLength = function (params, msg) {
+    var self        = this;
+    self.name       = 'collection.minLength';
+    self.defaultMsg = 'errors.form.collection.minLength';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (entities) {
+      if (entities.length < self.params.min) {
+        throw {error: self.msg};
+      }
+
+      return true;
+    };
+  };
+
+  /**
+   * Checks that there are at least the minimum number of members in this collection
+   */
+  collection.maxLength = function (params, msg) {
+    var self        = this;
+    self.name       = 'collection.maxLength';
+    self.defaultMsg = 'errors.form.collection.maxLength';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (entities) {
+      if (entities.length > self.params.max) {
+        throw {error: self.msg};
+      }
+
+      return true;
+    };
+  };
+
+  /**
+   * Checks the uniqueness of a specific property across a collection of entities
+   */
+  collection.unique = function (params, msg) {
+    var self        = this;
+    self.name       = 'collection.unique';
+    self.defaultMsg = 'errors.form.collection.unique';
+    msg             = (msg) ? msg : self.defaultMsg;
+    self.msg        = msg;
+    self.params     = params;
+
+    self.test = function (entities) {
+      var values, unique_values
+        , property = self.params.property;
+
+      // Map the array of entities to flatten to a list of values
+      values = _.map(entities, function (value, key, list) {
+        return value[property]();
+      });
+
+      unique_values = _.uniq(values);
+
+      if (values.length !== unique_values.length) {
+        throw {error: self.msg};
+      }
+
+      return true;
+    };
+  };
+
+
+  return collection;
+}());
+
+
+},{"underscore":15}],15:[function(require,module,exports){
 (function(){//     Underscore.js 1.4.4
 //     http://underscorejs.org
 //     (c) 2009-2013 Jeremy Ashkenas, DocumentCloud Inc.
